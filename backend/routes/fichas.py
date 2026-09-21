@@ -1,0 +1,18 @@
+from flask import Blueprint, jsonify, request
+
+import db
+
+bp = Blueprint("fichas", __name__)
+
+
+@bp.get("/api/fichas")
+def list_fichas():
+    return jsonify(db.list_fichas())
+
+
+@bp.post("/api/fichas")
+def create_ficha():
+    body = request.get_json(force=True, silent=True) or {}
+    if not (body.get("equipamento") or "").strip() or not (body.get("patrimonio") or "").strip():
+        return jsonify({"error": "Campos 'equipamento' e 'patrimonio' são obrigatórios."}), 400
+    return jsonify(db.create_ficha(body)), 201

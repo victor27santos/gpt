@@ -8,7 +8,7 @@ import {
   GraduationCap, Hash, FileSpreadsheet, Upload, Pencil,
   Mail, Bot, Zap, CloudOff, Trash2, History, BookOpen, Mic, Square, Paperclip
 } from 'lucide-react';
-import { API_BASE_URL } from './config';
+import { api } from './api';
 
 // --- CONFIGURAÇÕES E DADOS ---
 const LOGIN_PROFILES = [
@@ -20,18 +20,6 @@ const LOGIN_PROFILES = [
 const PENDING_STATUS_FLOW = ['Aberto', 'Em atendimento', 'Aguardando peça', 'Concluído', 'Encerrado'];
 const STATUS_COLORS = { 'Aberto': 'bg-rose-100 text-rose-700 border-rose-200', 'Em atendimento': 'bg-blue-100 text-blue-700 border-blue-200', 'Aguardando peça': 'bg-amber-100 text-amber-700 border-amber-200', 'Concluído': 'bg-emerald-100 text-emerald-700 border-emerald-200', 'Encerrado': 'bg-slate-200 text-slate-600 border-slate-300' };
 
-const INITIAL_SECTORS = [
-  { id: 'floor-7', name: '7º Andar', areas: 'Internação', description: 'Unidade de internação geral.', hasSubSectors: false, equipments: [], pendings: [], improvements: [] },
-  { id: 'floor-5', name: '5º Andar', areas: 'Internação e UTI', description: 'Unidade mista de alta complexidade.', hasSubSectors: true, subSectors: [{ id: 'uti_5', name: 'UTI Adulto', description: 'Cuidado intensivo e Terapia Renal.' }], equipments: [], pendings: [], improvements: [] },
-  { id: 'floor-2', name: '2º Andar', areas: 'Centro Cirúrgico', description: 'Bloco operatório de alta complexidade.', hasSubSectors: true, subSectors: [{ id: 'cc_principal', name: 'CC Principal', description: 'Cirurgias de grande porte.' }], equipments: [], pendings: [], improvements: [] },
-  { id: 'floor-0', name: 'Térreo', areas: 'CDI, Farmácia e PS', description: 'Áreas de apoio crítico.', hasSubSectors: true, subSectors: [{ id: 'cdi', name: 'CDI', description: 'Centro de Diagnóstico por Imagem.' }], equipments: [], pendings: [], improvements: [] }
-];
-
-const INITIAL_FICHAS = [
-  { id: 1, equipamento: 'Monitor Multiparamétrico', fabricante: 'Dixtal', modelo: 'DX2020', patrimonio: '100123', setor: 'UTI Adulto', instalacao: '2023-05-10', ultimaCalib: '2025-10-15', proxCalib: '2026-10-15', status: 'Ativo', especificacoes: 'ECG, SpO2, PNI, PI, Capnografia.', customFields: [{key: 'Tensão', value: 'Bivolt Automático'}, {key: 'Bateria', value: 'Li-ion 4h'}] },
-  { id: 2, equipamento: 'Ventilador Pulmonar', fabricante: 'Puritan Bennett', modelo: 'PB840', patrimonio: '200456', setor: 'UTI Adulto', instalacao: '2021-02-20', ultimaCalib: '2026-01-10', proxCalib: '2026-07-10', status: 'Ativo', especificacoes: 'Ventilação invasiva e não invasiva, modos VCV e PCV.', customFields: [] }
-];
-
 // ============================================================================
 // APP PRINCIPAL
 // ============================================================================
@@ -41,15 +29,45 @@ export default function App() {
   const [view, setView] = useState('sectors');
   const [entries, setEntries] = useState([]);
   const [events, setEvents] = useState([]);
-  const [sectors, setSectors] = useState(INITIAL_SECTORS);
-  const [fichas, setFichas] = useState(INITIAL_FICHAS);
+  const [sectors, setSectors] = useState([]);
+  const [fichas, setFichas] = useState([]);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const handleLogin = (id) => {
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [sectorsData, fichasData, entriesData, eventsData] = await Promise.all([
+          api.sectors.list(),
+          api.fichas.list(),
+          api.entries.list(),
+          api.events.list(),
+        ]);
+        if (cancelled) return;
+        setSectors(sectorsData);
+        setFichas(fichasData);
+        setEntries(entriesData);
+        setEvents(eventsData);
+      } catch (err) {
+        if (!cancelled) setLoadError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, reloadKey]);
+
+  const handleLogin = (id, name) => {
     const profile = LOGIN_PROFILES.find(p => p.id === id) || LOGIN_PROFILES[0];
-    setUser(profile);
+    setUser({ ...profile, name });
     setIsAuthenticated(true);
   };
 
@@ -64,37 +82,49 @@ export default function App() {
       setInstallPrompt(false);
   };
 
-  const handleSaveEntry = (data) => {
-      if (editingEntry) {
-          const updatedEntries = entries.map(entry => {
-              if (entry.id === editingEntry.id) {
-                  return {
-                      ...entry,
-                      ...data,
-                      lastEditor: user.name,
-                      lastEditDate: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
-                  };
-              }
-              return entry;
-          });
-          setEntries(updatedEntries);
-          setEditingEntry(null);
-      } else {
-          const newEntry = {
-              ...data,
-              id: Math.floor(Math.random() * 9000) + 1000,
-              date: new Date().toLocaleDateString('pt-BR'),
-              author: user.name,
-              createdAt: new Date().toISOString()
-          };
-          setEntries([newEntry, ...entries]);
+  const handleSaveEntry = async (data) => {
+      try {
+          if (editingEntry) {
+              const updated = await api.entries.update(editingEntry.id, {
+                  ...data,
+                  lastEditor: user.name,
+                  lastEditDate: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
+              });
+              setEntries(entries.map(entry => entry.id === updated.id ? updated : entry));
+              setEditingEntry(null);
+          } else {
+              const created = await api.entries.create({
+                  ...data,
+                  date: new Date().toLocaleDateString('pt-BR'),
+                  author: user.name,
+                  createdAt: new Date().toISOString()
+              });
+              setEntries([created, ...entries]);
+          }
+          setView('list');
+      } catch (err) {
+          alert(`Erro ao salvar registro: ${err.message}`);
       }
-      setView('list');
   };
 
-  const handleDeleteEntry = (id) => {
+  const handleDeleteEntry = async (id) => {
       const confirm = window.confirm(`Atenção ${user.name}: Deseja realmente excluir este registro? Esta ação não pode ser desfeita.`);
-      if (confirm) setEntries(entries.filter(e => e.id !== id));
+      if (!confirm) return;
+      try {
+          await api.entries.remove(id);
+          setEntries(entries.filter(e => e.id !== id));
+      } catch (err) {
+          alert(`Erro ao excluir registro: ${err.message}`);
+      }
+  };
+
+  const handleAddEvent = async (eventData) => {
+      try {
+          const created = await api.events.create(eventData);
+          setEvents(prev => [...prev, created]);
+      } catch (err) {
+          alert(`Erro ao agendar: ${err.message}`);
+      }
   };
 
   const handleEditClick = (entry) => {
@@ -103,6 +133,26 @@ export default function App() {
   };
 
   if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} />;
+
+  if (loading) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
+              <Loader2 className="animate-spin text-blue-600" size={40} />
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</p>
+          </div>
+      );
+  }
+
+  if (loadError) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center">
+              <CloudOff className="text-rose-400" size={40} />
+              <p className="text-sm font-bold text-slate-600 max-w-sm">Não foi possível conectar ao servidor Pegasus. Verifique se o backend está rodando.</p>
+              <p className="text-xs text-slate-400 max-w-sm">{loadError}</p>
+              <button onClick={() => setReloadKey(k => k + 1)} className="mt-2 bg-blue-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700">Tentar novamente</button>
+          </div>
+      );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white flex flex-col font-sans selection:bg-blue-100 pb-20 md:pb-0">
@@ -115,6 +165,7 @@ export default function App() {
             <div>
               <h2 className="font-black text-slate-900 leading-tight text-lg">Pegasus</h2>
               <p className="text-xs text-blue-600 font-bold uppercase tracking-wider">{user.name}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{user.role}</p>
             </div>
           </div>
 
@@ -143,11 +194,11 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow">
-        {view === 'sectors' && <SectorsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} onAddEvent={e => setEvents([...events, e])} />}
+        {view === 'sectors' && <SectorsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} onAddEvent={handleAddEvent} />}
         {view === 'list' && <HistoryView entries={entries} onAddClick={() => { setEditingEntry(null); setView('form'); }} onItemClick={e => { setSelectedEntry(e); setView('detail'); }} onEditClick={handleEditClick} onDeleteClick={handleDeleteEntry} />}
         {view === 'fichas' && <FichasView fichas={fichas} setFichas={setFichas} sectors={sectors} user={user} />}
         {view === 'library' && <LibraryView sectors={sectors} user={user} />}
-        {view === 'calendar' && <CalendarView events={events} onAddEvent={e => setEvents([...events, e])} techs={LOGIN_PROFILES} />}
+        {view === 'calendar' && <CalendarView events={events} onAddEvent={handleAddEvent} techs={LOGIN_PROFILES} />}
         {view === 'improvements' && <ImprovementsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} />}
         {view === 'emails' && <EmailsIAView />}
         {view === 'consultor' && <ConsultorView user={user} fichas={fichas} onSaveToLibrary={handleSaveEntry} />}
@@ -203,11 +254,16 @@ function FichasView({ fichas, setFichas, sectors, user }) {
         setFormData({ ...formData, customFields: updatedFields });
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if(!formData.equipamento || !formData.patrimonio) return alert("Preencha Equipamento e Patrimônio.");
-        setFichas([{ ...formData, id: Date.now() }, ...fichas]);
-        setShowModal(false);
-        setFormData({ equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', customFields: [] });
+        try {
+            const created = await api.fichas.create(formData);
+            setFichas([created, ...fichas]);
+            setShowModal(false);
+            setFormData({ equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', customFields: [] });
+        } catch (err) {
+            alert(`Erro ao salvar ficha: ${err.message}`);
+        }
     };
 
     return (
@@ -373,44 +429,42 @@ function ImprovementsView({ sectors, onUpdateSector, user }) {
         return all.sort((a, b) => b.id - a.id);
     }, [sectors]);
 
-    const handleAddImprovement = () => {
+    const handleAddImprovement = async () => {
         if (!newImprovement.title || !newImprovement.description) return;
         const sectorIndex = sectors.findIndex(s => s.id === selectedSectorId);
         if (sectorIndex === -1) return;
-        const newImp = {
-            id: Date.now(),
-            title: newImprovement.title,
-            description: newImprovement.description,
-            author: user.name,
-            authorRole: user.role,
-            date: new Date().toLocaleDateString('pt-BR'),
-            comments: []
-        };
-        const updatedSector = { ...sectors[sectorIndex], improvements: [newImp, ...(sectors[sectorIndex].improvements || [])] };
-        onUpdateSector(updatedSector);
-        setNewImprovement({ title: '', description: '' });
+        try {
+            const created = await api.improvements.create(selectedSectorId, {
+                title: newImprovement.title,
+                description: newImprovement.description,
+                author: user.name,
+                authorRole: user.role,
+            });
+            const updatedSector = { ...sectors[sectorIndex], improvements: [created, ...(sectors[sectorIndex].improvements || [])] };
+            onUpdateSector(updatedSector);
+            setNewImprovement({ title: '', description: '' });
+        } catch (err) {
+            alert(`Erro ao publicar sugestão: ${err.message}`);
+        }
     };
 
-    const handleAddComment = (sectorId, improvementId) => {
+    const handleAddComment = async (sectorId, improvementId) => {
         if (!commentText) return;
-        const sectorIndex = sectors.findIndex(s => s.id === sectorId);
-        const sector = sectors[sectorIndex];
-        const impIndex = sector.improvements.findIndex(i => i.id === improvementId);
-        const updatedImprovement = {
-            ...sector.improvements[impIndex],
-            comments: [...(sector.improvements[impIndex].comments || []), {
-                id: Date.now(),
+        const sector = sectors.find(s => s.id === sectorId);
+        if (!sector) return;
+        try {
+            const updated = await api.improvements.addComment(improvementId, {
                 text: commentText,
                 author: user.name,
                 authorRole: user.role,
-                date: new Date().toLocaleDateString('pt-BR')
-            }]
-        };
-        const updatedSector = { ...sector };
-        updatedSector.improvements[impIndex] = updatedImprovement;
-        onUpdateSector(updatedSector);
-        setCommentText('');
-        setActiveImprovementId(null);
+            });
+            const updatedSector = { ...sector, improvements: sector.improvements.map(i => i.id === improvementId ? updated : i) };
+            onUpdateSector(updatedSector);
+            setCommentText('');
+            setActiveImprovementId(null);
+        } catch (err) {
+            alert(`Erro ao comentar: ${err.message}`);
+        }
     };
 
     return (
@@ -528,10 +582,19 @@ function Form({ onSave, onCancel, initialData, user }) {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           mediaRecorderRef.current = new MediaRecorder(stream);
           mediaRecorderRef.current.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-          mediaRecorderRef.current.onstop = () => {
+          mediaRecorderRef.current.onstop = async () => {
               const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-              setF(prev => ({ ...prev, mediaUrl: URL.createObjectURL(audioBlob), mediaType: 'audio' }));
               audioChunksRef.current = [];
+              setUploading(true);
+              try {
+                  const audioFile = new File([audioBlob], `gravacao-${Date.now()}.webm`, { type: 'audio/webm' });
+                  const mediaUrl = await api.uploads.upload(audioFile);
+                  setF(prev => ({ ...prev, mediaUrl, mediaType: 'audio' }));
+              } catch (err) {
+                  alert(`Erro ao enviar áudio: ${err.message}`);
+              } finally {
+                  setUploading(false);
+              }
           };
           mediaRecorderRef.current.start();
           setIsRecording(true);
@@ -550,28 +613,32 @@ function Form({ onSave, onCancel, initialData, user }) {
       if (!f.description || !f.equipment) { alert("Preencha Equipamento e Descrição."); return; }
       setAnalyzing(true);
       try {
-          const response = await fetch(`${API_BASE_URL}/api/melhorar_relato`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.description, equipamento: f.equipment }) });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error);
-          let sugestao; try { sugestao = JSON.parse(data.sugestao); } catch(e) { sugestao = data.sugestao; }
+          const data = await api.ai.melhorarRelato(f.description, f.equipment);
+          const sugestao = data.sugestao;
           setF(prev => ({ ...prev, title: sugestao.titulo_sugerido, description: sugestao.descricao_tecnica, solution: sugestao.solucao_passo_a_passo }));
       } catch (error) { alert(`Erro IA: ${error.message}`); } finally { setAnalyzing(false); }
   };
 
   const handleSaveClick = async () => {
       onSave(f);
-      try { await fetch(`${API_BASE_URL}/api/salvar_conhecimento`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString() }) }); } catch (err) {}
+      try { await api.ai.salvarConhecimento({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString() }); } catch (err) {}
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
       const file = e.target.files[0];
-      if (file) {
-          setUploading(true);
+      if (!file) return;
+      setUploading(true);
+      try {
+          const mediaUrl = await api.uploads.upload(file);
           let type = 'image';
           if (file.type.includes('video')) type = 'video';
           if (file.type.includes('audio')) type = 'audio';
-          setF({ ...f, mediaUrl: URL.createObjectURL(file), mediaType: type });
+          setF(prev => ({ ...prev, mediaUrl, mediaType: type }));
+      } catch (err) {
+          alert(`Erro ao enviar arquivo: ${err.message}`);
+      } finally {
           setUploading(false);
+          e.target.value = '';
       }
   };
 
@@ -796,25 +863,14 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
     const askAI = async (text, history) => {
         setChatLoading(true);
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-            const response = await fetch(`${API_BASE_URL}/api/perguntar_assistente`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pergunta: text }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            const data = await response.json();
+            const data = await api.ai.perguntarAssistente(text);
             let safeText = "Desculpe, equipamento não encontrado no inventário e a IA não conseguiu formular uma resposta.";
             if (data && data.resposta) {
                 safeText = typeof data.resposta === 'string' ? data.resposta : JSON.stringify(data.resposta);
             }
             setChatHistory(prev => [...prev, { type: 'bot', text: safeText }]);
         } catch (error) {
-            setChatHistory(prev => [...prev, { type: 'bot', text: "⚠️ Erro de conexão com o servidor Python. Verifique se ele está ligado." }]);
+            setChatHistory(prev => [...prev, { type: 'bot', text: `⚠️ Erro de conexão com o servidor: ${error.message}` }]);
         } finally {
             setChatLoading(false);
         }
@@ -831,17 +887,10 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
         if (!input.description || !input.equipment) return alert("Preencha os campos.");
         setCreateLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/melhorar_relato`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ texto: input.description, equipamento: input.equipment })
-            });
-            const data = await response.json();
-            let sugestao;
-            try { sugestao = JSON.parse(data.sugestao); } catch (e) { sugestao = data.sugestao; }
-            setResult(sugestao);
+            const data = await api.ai.melhorarRelato(input.description, input.equipment);
+            setResult(data.sugestao);
         } catch (error) {
-            alert("Erro na IA");
+            alert(`Erro na IA: ${error.message}`);
         } finally {
             setCreateLoading(false);
         }
@@ -850,11 +899,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
     const handleSave = async () => {
         if (!result) return;
         try {
-            await fetch(`${API_BASE_URL}/api/salvar_conhecimento`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: result.titulo_sugerido, equipment: input.equipment, solution: result.solucao_passo_a_passo, author: user.name, date: new Date().toISOString() })
-            });
+            await api.ai.salvarConhecimento({ title: result.titulo_sugerido, equipment: input.equipment, solution: result.solucao_passo_a_passo, author: user.name, date: new Date().toISOString() });
         } catch(e) { console.error(e); }
 
         onSaveToLibrary({ title: result.titulo_sugerido, equipment: input.equipment, description: result.descricao_tecnica, solution: result.solucao_passo_a_passo, category: 'corretiva', mediaType: 'image' });
@@ -970,6 +1015,23 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
 }
 
 function LoginScreen({ onLogin }) {
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [name, setName] = useState('');
+
+  const handleSelectProfile = (profile) => {
+      setSelectedProfile(profile);
+      let savedName = '';
+      try { savedName = localStorage.getItem(`pegasus_name_${profile.id}`) || ''; } catch (err) {}
+      setName(savedName);
+  };
+
+  const handleConfirm = () => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      try { localStorage.setItem(`pegasus_name_${selectedProfile.id}`, trimmed); } catch (err) {}
+      onLogin(selectedProfile.id, trimmed);
+  };
+
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 overflow-hidden">
         <div className="absolute top-20 left-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
@@ -977,7 +1039,29 @@ function LoginScreen({ onLogin }) {
         <div className="relative z-10 w-full max-w-md p-6">
             <div className="backdrop-blur-sm bg-white/80 border border-white/60 rounded-3xl p-10 shadow-xl hover:shadow-2xl transition-all duration-300">
                 <div className="mb-10 text-center"><div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg"><Activity size={32} className="text-white" /></div><h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">PEGASUS</h1><p className="text-indigo-600 text-sm font-semibold">Gestão Inteligente de Ativos Hospitalares</p></div>
-                <div className="space-y-3"><p className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] text-center mb-6">Selecione seu perfil</p>{LOGIN_PROFILES.map(profile => (<button key={profile.id} onClick={() => onLogin(profile.id)} className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/60 text-slate-900 font-bold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex items-center justify-between px-6 group hover:scale-[1.02]"><div><span className="text-sm tracking-wide block">{profile.name}</span><span className="text-xs text-slate-500 font-normal">{profile.role}</span></div><ChevronRight size={20} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" /></button>))}</div>
+                {!selectedProfile ? (
+                    <div className="space-y-3"><p className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] text-center mb-6">Selecione seu perfil</p>{LOGIN_PROFILES.map(profile => (<button key={profile.id} onClick={() => handleSelectProfile(profile)} className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/60 text-slate-900 font-bold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex items-center justify-between px-6 group hover:scale-[1.02]"><div><span className="text-sm tracking-wide block">{profile.name}</span><span className="text-xs text-slate-500 font-normal">{profile.role}</span></div><ChevronRight size={20} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" /></button>))}</div>
+                ) : (
+                    <div className="space-y-4 animate-fade-in">
+                        <button onClick={() => setSelectedProfile(null)} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-600"><ArrowLeft size={14}/> Trocar perfil</button>
+                        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+                            <p className="text-sm font-bold text-slate-800">{selectedProfile.name}</p>
+                            <p className="text-xs text-slate-500">{selectedProfile.role}</p>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Seu nome</label>
+                            <input
+                                autoFocus
+                                className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                                placeholder="Como você quer ser identificado"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+                            />
+                        </div>
+                        <button onClick={handleConfirm} disabled={!name.trim()} className="w-full py-4 bg-blue-600 disabled:opacity-40 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest text-xs">Entrar</button>
+                    </div>
+                )}
                 <p className="text-center text-slate-400 text-xs mt-10 font-semibold opacity-60 tracking-widest">PEGASUS v5.1 • Engenharia Clínica</p>
             </div>
         </div>
@@ -1008,14 +1092,49 @@ function LibraryView({ sectors, user }) {
     const [selectedDoc, setSelectedDoc] = useState(null);
     const fileInputRef = useRef(null);
 
-    const [docs, setDocs] = useState([
-        { id: 1, title: 'Manual PB840', equipment: 'Ventilador PB840', sectorId: 'floor-5', category: 'procedimentos', type: 'pdf', date: '10/01/2026', author: 'Engenharia Clínica', desc: 'Calibração e desmontagem.' }
-    ]);
+    const [docs, setDocs] = useState([]);
+    const [loadingDocs, setLoadingDocs] = useState(true);
+    const [uploadingDoc, setUploadingDoc] = useState(false);
 
-    const handleAddDocument = (e) => {
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await api.library.list();
+                if (!cancelled) setDocs(data);
+            } catch (err) {
+                console.error('Erro ao carregar biblioteca:', err);
+            } finally {
+                if (!cancelled) setLoadingDocs(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    const handleAddDocument = async (e) => {
         const file = e.target.files[0]; if (!file) return;
-        setDocs([{ id: Date.now(), title: file.name, equipment: 'Geral', sectorId: filterSector !== 'all' ? filterSector : 'floor-0', category: filterCategory !== 'all' ? filterCategory : 'procedimentos', type: file.type.includes('image') ? 'image' : file.type.includes('video') ? 'video' : 'pdf', date: new Date().toLocaleDateString('pt-BR'), author: user ? user.name : 'Técnico', desc: 'Arquivo importado.', mediaUrl: URL.createObjectURL(file) }, ...docs]);
-        alert("Documento adicionado à biblioteca com sucesso!");
+        setUploadingDoc(true);
+        try {
+            const mediaUrl = await api.uploads.upload(file);
+            const type = file.type.includes('image') ? 'image' : file.type.includes('video') ? 'video' : 'pdf';
+            const created = await api.library.create({
+                title: file.name,
+                equipment: 'Geral',
+                sectorId: filterSector !== 'all' ? filterSector : 'floor-0',
+                category: filterCategory !== 'all' ? filterCategory : 'procedimentos',
+                type,
+                author: user ? user.name : 'Técnico',
+                desc: 'Arquivo importado.',
+                mediaUrl,
+            });
+            setDocs([created, ...docs]);
+            alert("Documento adicionado à biblioteca com sucesso!");
+        } catch (err) {
+            alert(`Erro ao enviar documento: ${err.message}`);
+        } finally {
+            setUploadingDoc(false);
+            e.target.value = '';
+        }
     };
 
     const categories = [{ id: 'all', label: 'Todos' }, { id: 'procedimentos', label: 'Manuais' }, { id: 'corretiva', label: 'Corretiva' }, { id: 'preventiva', label: 'Preventiva' }, { id: 'calibracao', label: 'Calibração' }];
@@ -1036,11 +1155,13 @@ function LibraryView({ sectors, user }) {
     return (
         <div className="animate-fade-in space-y-6">
             <div className="bg-white rounded-[40px] border border-slate-200 shadow-2xl overflow-hidden min-h-[500px] flex flex-col relative">
-                <div className="p-8 border-b bg-slate-50/50 flex flex-col gap-4"><div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2"><BookOpen className="text-emerald-600"/> Biblioteca Técnica</h1><p className="text-slate-500 font-medium">Acervo de Manuais e Relatórios.</p></div><div className="flex gap-2 items-center"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2.5 bg-white border rounded-xl outline-none focus:border-emerald-400 font-bold text-xs shadow-sm" value={search} onChange={(e) => setSearch(e.target.value)} /></div><input type="file" className="hidden" ref={fileInputRef} onChange={handleAddDocument} /><button onClick={() => fileInputRef.current.click()} className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-700 shadow-md flex items-center gap-2"><Plus size={14}/> Add Doc</button></div></div></div>
+                <div className="p-8 border-b bg-slate-50/50 flex flex-col gap-4"><div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2"><BookOpen className="text-emerald-600"/> Biblioteca Técnica</h1><p className="text-slate-500 font-medium">Acervo de Manuais e Relatórios.</p></div><div className="flex gap-2 items-center"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Buscar..." className="pl-10 pr-4 py-2.5 bg-white border rounded-xl outline-none focus:border-emerald-400 font-bold text-xs shadow-sm" value={search} onChange={(e) => setSearch(e.target.value)} /></div><input type="file" className="hidden" ref={fileInputRef} onChange={handleAddDocument} disabled={uploadingDoc} /><button onClick={() => fileInputRef.current.click()} disabled={uploadingDoc} className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-700 shadow-md flex items-center gap-2 disabled:opacity-50">{uploadingDoc ? <Loader2 size={14} className="animate-spin"/> : <Plus size={14}/>} {uploadingDoc ? 'Enviando...' : 'Add Doc'}</button></div></div></div>
                 <div className="p-8 bg-slate-50/30 flex-grow">
                     <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar"><button onClick={() => setFilterSector('all')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${filterSector === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>Todos Setores</button>{sectors.map(s => (<button key={s.id} onClick={() => setFilterSector(s.id)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${filterSector === s.id ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>{s.name}</button>))}</div>
                     <div className="flex gap-2 overflow-x-auto pb-6 no-scrollbar border-b border-slate-200/60 mb-6">{categories.map(cat => (<button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all whitespace-nowrap ${filterCategory === cat.id ? 'bg-emerald-50 text-emerald-700 font-black border border-emerald-200' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}>{cat.label}</button>))}</div>
-                    {filteredDocs.length === 0 ? (
+                    {loadingDocs ? (
+                        <div className="p-20 text-center text-slate-400 flex flex-col items-center"><Loader2 size={40} className="animate-spin mb-4"/><p className="font-bold text-sm uppercase tracking-widest">Carregando...</p></div>
+                    ) : filteredDocs.length === 0 ? (
                         <div className="p-20 text-center text-slate-400 border-4 border-dashed border-white rounded-[40px] bg-slate-100/50 flex flex-col items-center"><BookOpen size={48} className="mb-4 opacity-50"/><p className="font-bold text-sm uppercase tracking-widest">Nenhum arquivo encontrado.</p></div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1168,7 +1289,7 @@ function EmailsIAView() {
     const [emailToDelete, setEmailToDelete] = useState(null);
     const [justification, setJustification] = useState("");
 
-    const fetchEmails = async () => { setLoading(true); setError(null); try { const response = await fetch(`${API_BASE_URL}/api/emails`); if (!response.ok) throw new Error("Erro ao conectar"); const data = await response.json(); setEmails(prev => { const newItems = data.filter(d => !prev.some(p => p.original_assunto === d.original_assunto) && !deletedEmails.some(del => del.original_assunto === d.original_assunto)); return [...prev, ...newItems]; }); } catch (err) { setError("O Agente IA (Python) parece estar desligado."); } finally { setLoading(false); } };
+    const fetchEmails = async () => { setLoading(true); setError(null); try { const data = await api.ai.emails(); setEmails(prev => { const newItems = data.filter(d => !prev.some(p => p.original_assunto === d.original_assunto) && !deletedEmails.some(del => del.original_assunto === d.original_assunto)); return [...prev, ...newItems]; }); } catch (err) { setError(`O Agente IA (Python) parece estar desligado ou sem chave configurada: ${err.message}`); } finally { setLoading(false); } };
     const handleDeleteClick = (email) => { setEmailToDelete(email); setJustification(""); setIsDeleteModalOpen(true); };
     const confirmDelete = () => { if (!justification.trim()) { alert("A justificativa é obrigatória."); return; } const deletedItem = { ...emailToDelete, justificativa: justification, dataExclusao: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}) }; setDeletedEmails([deletedItem, ...deletedEmails]); setEmails(emails.filter(e => e.original_assunto !== emailToDelete.original_assunto)); setIsDeleteModalOpen(false); setEmailToDelete(null); };
 
@@ -1258,42 +1379,46 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
   useEffect(() => { if (current.hasSubSectors && current.subSectors.length > 0) { setSubId(current.subSectors[0].id); } else { setSubId(null); } }, [selectedId]);
   const filteredPendings = current.pendings.filter(p => !subId || p.subSectorId === subId);
 
-  const handleSavePending = () => {
+  const handleSavePending = async () => {
       if (!newPendingData.description || !newPendingData.reason) return;
-      let updatedPendings;
-      if (newPendingData.id) {
-          updatedPendings = current.pendings.map(p => p.id === newPendingData.id ? { ...p, description: newPendingData.description, reason: newPendingData.reason, type: newPendingData.type, lastEditor: user.name, lastEditDate: new Date().toLocaleDateString('pt-BR') } : p);
-      } else {
-          const newPending = { id: Math.floor(Math.random() * 90000) + 10000, type: newPendingData.type, description: newPendingData.description, reason: newPendingData.reason, status: 'Aberto', author: user.name, date: new Date().toLocaleDateString('pt-BR'), subSectorId: subId, updates: [] };
-          updatedPendings = [...current.pendings, newPending];
-          if (onAddEvent) { onAddEvent({ id: Date.now(), title: `[PENDÊNCIA] ${newPendingData.description}`, date: new Date().toISOString().split('T')[0], assignedTo: user.name, priority: 'normal', description: newPendingData.reason }); }
+      try {
+          const created = await api.pendings.create(current.id, {
+              type: newPendingData.type,
+              description: newPendingData.description,
+              reason: newPendingData.reason,
+              author: user.name,
+              subSectorId: subId,
+          });
+          onUpdateSector({ ...current, pendings: [...current.pendings, created] });
+          if (onAddEvent) { onAddEvent({ title: `[PENDÊNCIA] ${newPendingData.description}`, date: new Date().toISOString().split('T')[0], assignedTo: user.name, priority: 'normal', description: newPendingData.reason }); }
+          setShowAddPending(false);
+      } catch (err) {
+          alert(`Erro ao criar pendência: ${err.message}`);
       }
-      onUpdateSector({ ...current, pendings: updatedPendings });
-      setShowAddPending(false);
   };
 
-  const handleStatusChange = (pendingId, newStatus) => {
-      const updatedPendings = current.pendings.map(p => {
-          if (p.id === pendingId) {
-              const statusUpdate = { id: Date.now(), text: `Status alterado para: ${newStatus}`, author: user.name, date: new Date().toLocaleDateString('pt-BR') };
-              return { ...p, status: newStatus, updates: [...(p.updates || []), statusUpdate] };
-          }
-          return p;
-      });
-      onUpdateSector({ ...current, pendings: updatedPendings });
-      if (selectedPending && selectedPending.id === pendingId) setSelectedPending(updatedPendings.find(p => p.id === pendingId));
+  const handleStatusChange = async (pendingId, newStatus) => {
+      try {
+          const updated = await api.pendings.updateStatus(pendingId, newStatus, user.name);
+          const updatedPendings = current.pendings.map(p => p.id === pendingId ? updated : p);
+          onUpdateSector({ ...current, pendings: updatedPendings });
+          if (selectedPending && selectedPending.id === pendingId) setSelectedPending(updated);
+      } catch (err) {
+          alert(`Erro ao atualizar status: ${err.message}`);
+      }
   };
 
-  const handleAddUpdate = () => {
+  const handleAddUpdate = async () => {
       if (!updateText || !selectedPending) return;
-      const newUpdateItem = { id: Date.now(), text: updateText, author: user.name, date: new Date().toLocaleDateString('pt-BR') };
-      const updatedPendings = current.pendings.map(p => {
-          if (p.id === selectedPending.id) { return { ...p, updates: [...(p.updates || []), newUpdateItem] }; }
-          return p;
-      });
-      onUpdateSector({ ...current, pendings: updatedPendings });
-      setSelectedPending(updatedPendings.find(p => p.id === selectedPending.id));
-      setUpdateText('');
+      try {
+          const updated = await api.pendings.addUpdate(selectedPending.id, updateText, user.name);
+          const updatedPendings = current.pendings.map(p => p.id === selectedPending.id ? updated : p);
+          onUpdateSector({ ...current, pendings: updatedPendings });
+          setSelectedPending(updated);
+          setUpdateText('');
+      } catch (err) {
+          alert(`Erro ao adicionar atualização: ${err.message}`);
+      }
   };
 
   return (
@@ -1363,7 +1488,7 @@ function CalendarView({ events, onAddEvent, techs }) {
     const startingDay = getFirstDayOfMonth(year, month);
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const calendarCells = []; for (let i = 0; i < startingDay; i++) calendarCells.push(null); for (let i = 1; i <= totalDays; i++) calendarCells.push(i);
-    const handleSave = () => { onAddEvent({ ...newEvent, id: Date.now() }); setShowModal(false); };
+    const handleSave = () => { onAddEvent(newEvent); setShowModal(false); };
 
     return (
         <div className="animate-fade-in relative">

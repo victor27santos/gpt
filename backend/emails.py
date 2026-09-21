@@ -7,8 +7,8 @@ caching logic below.
 import json
 from pathlib import Path
 
+import db
 import llm
-import storage
 
 INBOX_PATH = Path(__file__).parent / "data" / "sample_inbox.json"
 
@@ -40,11 +40,11 @@ def triage_email(email):
 def get_triaged_emails():
     results = []
     for email in load_inbox():
-        cached = storage.get_cached_triage(email["assunto"])
+        cached = db.get_cached_triage(email["assunto"])
         if cached:
             results.append(cached)
             continue
         triaged = triage_email(email)
-        storage.save_triage(triaged)
+        db.save_triage(triaged)
         results.append(triaged)
     return results
