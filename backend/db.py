@@ -147,6 +147,14 @@ CREATE TABLE IF NOT EXISTS email_triage (
     acao_sugerida TEXT,
     triaged_at TEXT
 );
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    created_at TEXT
+);
 """
 
 
@@ -730,3 +738,34 @@ def save_triage(item):
     )
     conn.commit()
     conn.close()
+
+
+# --- users -------------------------------------------------------------------------------
+
+def create_user(name, username, password_hash, role_id):
+    conn = get_conn()
+    if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
+        conn.close()
+        return None
+    cur = conn.execute(
+        "INSERT INTO users (name, username, password_hash, role_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (name, username, password_hash, role_id, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    return dict(row)
+
+
+def get_user_by_username(username):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None

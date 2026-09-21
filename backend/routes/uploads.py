@@ -4,6 +4,8 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from auth import require_auth
+
 bp = Blueprint("uploads", __name__)
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
@@ -12,6 +14,7 @@ MAX_SIZE = 25 * 1024 * 1024  # 25MB
 
 
 @bp.post("/api/uploads")
+@require_auth
 def upload_file():
     if "file" not in request.files:
         return jsonify({"error": "Nenhum arquivo enviado."}), 400

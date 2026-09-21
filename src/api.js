@@ -1,12 +1,35 @@
 import { API_BASE_URL } from './config';
 
+const TOKEN_KEY = 'pegasus_token';
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch (err) { return null; }
+}
+
+export function setToken(token) {
+  try { localStorage.setItem(TOKEN_KEY, token); } catch (err) { /* ignore */ }
+}
+
+export function clearToken() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch (err) { /* ignore */ }
+}
+
 async function request(path, options = {}) {
   const { body, headers, ...rest } = options;
+  const token = getToken();
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(headers || {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     ...rest,
   });
+  if (res.status === 401) {
+    clearToken();
+    window.dispatchEvent(new Event('pegasus:unauthorized'));
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Erro ${res.status} ao falar com o servidor.`);
@@ -16,9 +39,18 @@ async function request(path, options = {}) {
 }
 
 async function uploadFile(file) {
+  const token = getToken();
   const formData = new FormData();
   formData.append('file', file);
-  const res = await fetch(`${API_BASE_URL}/api/uploads`, { method: 'POST', body: formData });
+  const res = await fetch(`${API_BASE_URL}/api/uploads`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (res.status === 401) {
+    clearToken();
+    window.dispatchEvent(new Event('pegasus:unauthorized'));
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Falha no upload do arquivo.');
@@ -28,6 +60,11 @@ async function uploadFile(file) {
 }
 
 export const api = {
+  auth: {
+    register: (data) => request('/api/auth/register', { method: 'POST', body: data }),
+    login: (username, password) => request('/api/auth/login', { method: 'POST', body: { username, password } }),
+    me: () => request('/api/auth/me'),
+  },
   sectors: {
     list: () => request('/api/sectors'),
   },

@@ -51,9 +51,15 @@ cd backend
 python3 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env             # depois edite .env com sua ANTHROPIC_API_KEY
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_hex(32))"   # cole o resultado em SECRET_KEY= no .env
 python app.py
 ```
+
+`SECRET_KEY` é obrigatória (assina as sessões de login) — sem ela o servidor
+recusa iniciar, com uma mensagem explicando o que fazer. `./start.sh`/
+`start.bat` geram essa chave automaticamente; rodando manualmente, é o passo
+acima.
 
 Sobe em `http://127.0.0.1:5000`. Na primeira execução cria e popula
 `backend/data/pegasus.db` (SQLite) com os setores, fichas e documento de
@@ -82,20 +88,26 @@ Qualquer computador/celular na mesma rede abre `http://192.168.1.23:5173` no
 navegador e usa o app normalmente — o front detecta sozinho onde está o
 backend, sem configurar nada em cada dispositivo.
 
-**Atenção:** isso expõe o sistema (sem autenticação real) para qualquer um na
-mesma rede. Adequado para uma equipe pequena testando em uma rede confiável
-(ex: Wi-Fi interno do setor), não para redes públicas/compartilhadas. Para
-restringir de volta a só esta máquina, defina `HOST=127.0.0.1` no
-`backend/.env`. O firewall do sistema operacional também pode pedir para
-liberar as portas 5000 e 5173 na primeira execução.
+Com login real (veja abaixo), estar na mesma rede não é mais suficiente para
+usar o sistema — ainda assim, prefira uma rede confiável (Wi-Fi interno do
+setor) a uma rede pública. Para restringir de volta a só esta máquina, defina
+`HOST=127.0.0.1` no `backend/.env`. O firewall do sistema operacional também
+pode pedir para liberar as portas 5000 e 5173 na primeira execução.
 
 ## Login
 
-Não há senha: você escolhe um perfil (Coordenação, Técnicos 5x2 ou
-Plantonistas) e informa seu nome, que fica salvo no navegador e é usado como
-autor de tudo que você criar (pendências, fichas, comentários etc.). Pensado
-para uso em rede local por uma equipe pequena e confiável — não é
-autenticação real, então não deve ser exposto na internet pública.
+Autenticação real: cada pessoa cria sua própria conta (nome, usuário, senha e
+perfil — Coordenação, Técnicos 5x2 ou Plantonistas) na aba "Criar conta" da
+tela de login. A senha fica com hash no banco (nunca em texto puro), a sessão
+usa um token (JWT) válido por 30 dias guardado no navegador, e todo registro
+que você cria (pendências, fichas, comentários etc.) é atribuído a você
+automaticamente pelo servidor — o cliente não consegue "se passar" por outra
+pessoa. Todas as rotas da API exigem login, exceto `/api/auth/*` e
+`/api/health`.
+
+Não há um fluxo de "esqueci minha senha" nem papel de administrador ainda
+(qualquer pessoa pode criar sua própria conta livremente) — adequado para uma
+equipe pequena e confiável.
 
 ## O que já é persistido
 
@@ -110,6 +122,7 @@ para o servidor (`backend/uploads/`) em vez de blobs temporários do navegador.
 
 | Recurso | Rotas |
 |---|---|
+| Autenticação | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
 | Setores/pendências | `GET /api/sectors`, `POST /api/sectors/<id>/pendings`, `PATCH /api/pendings/<id>/status`, `POST /api/pendings/<id>/updates` |
 | Melhorias | `POST /api/sectors/<id>/improvements`, `POST /api/improvements/<id>/comments` |
 | Fichas | `GET/POST /api/fichas` |
@@ -119,6 +132,9 @@ para o servidor (`backend/uploads/`) em vez de blobs temporários do navegador.
 | Upload de mídia | `POST /api/uploads` (multipart, até 25MB, extensões de imagem/vídeo/áudio/pdf), servido em `GET /uploads/<arquivo>` |
 | IA | `POST /api/melhorar_relato`, `POST /api/salvar_conhecimento`, `POST /api/perguntar_assistente`, `GET /api/emails` |
 | Diagnóstico | `GET /api/health` |
+
+Todas as rotas acima, exceto `/api/auth/*` e `/api/health`, exigem o header
+`Authorization: Bearer <token>` obtido no login/registro.
 
 ### Caixa de entrada de e-mails
 
@@ -130,9 +146,16 @@ credenciais de e-mail. Trocar por uma conta real depois é só substituir
 
 ## Limitações conhecidas
 
-- **Sem autenticação real.** Login é perfil + nome, sem senha — adequado para
-  uma equipe pequena confiável em rede local, não para expor na internet.
+- **Sem "esqueci minha senha" nem papel de administrador.** Qualquer pessoa
+  pode criar sua própria conta; não há como um coordenador desativar/gerenciar
+  contas de outras pessoas ainda.
+- **Arquivos enviados (`/uploads/<arquivo>`) não exigem login para visualizar**
+  — o nome do arquivo é um identificador aleatório não-adivinhável, mas quem
+  tiver o link consegue abrir a foto/vídeo/áudio sem estar logado. Aceitável
+  para a maioria dos casos, mas vale saber.
 - **Pensado para rede local**, não para múltiplos servidores/deploy distribuído
-  (SQLite com um arquivo local, uploads em disco local).
+  (SQLite com um arquivo local, uploads em disco local). Para colocar online
+  de verdade (fora da rede local), é preciso migrar para um banco de dados e
+  armazenamento de arquivos hospedados — ainda não feito.
 - **Sem testes automatizados** além dos scripts manuais usados durante o
   desenvolvimento.

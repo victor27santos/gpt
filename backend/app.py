@@ -4,6 +4,7 @@ Run with: python app.py  (reads ANTHROPIC_API_KEY / ANTHROPIC_MODEL from .env)
 """
 import os
 import socket
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,8 +14,18 @@ from werkzeug.exceptions import HTTPException
 
 load_dotenv()
 
+if not os.environ.get("SECRET_KEY"):
+    sys.exit(
+        "SECRET_KEY não configurada em backend/.env — sem ela, o login não pode funcionar "
+        "(é o que assina as sessões). Gere uma com:\n"
+        "  python3 -c \"import secrets; print(secrets.token_hex(32))\"\n"
+        "e cole em backend/.env como SECRET_KEY=<valor gerado>.\n"
+        "(Se você usou ./start.sh ou start.bat, isso já é feito automaticamente.)"
+    )
+
 import db
 from routes.ai import bp as ai_bp
+from routes.auth import bp as auth_bp
 from routes.entries import bp as entries_bp
 from routes.events import bp as events_bp
 from routes.fichas import bp as fichas_bp
@@ -31,7 +42,7 @@ CORS(app)
 db.init_db()
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-for blueprint in (ai_bp, sectors_bp, fichas_bp, entries_bp, events_bp, library_bp, uploads_bp):
+for blueprint in (auth_bp, ai_bp, sectors_bp, fichas_bp, entries_bp, events_bp, library_bp, uploads_bp):
     app.register_blueprint(blueprint)
 
 

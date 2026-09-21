@@ -16,8 +16,7 @@ echo "-> Verificando dependências do backend..."
 backend/venv/bin/pip install --quiet -r backend/requirements.txt
 
 if [ ! -f "backend/.env" ]; then
-    cp backend/.env.example backend/.env
-    echo "-> Criado backend/.env — edite esse arquivo e adicione sua ANTHROPIC_API_KEY para a IA funcionar."
+    backend/venv/bin/python backend/generate_env.py
 fi
 
 # --- frontend setup (only does work if missing) ---

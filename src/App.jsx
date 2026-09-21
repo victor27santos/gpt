@@ -8,7 +8,7 @@ import {
   GraduationCap, Hash, FileSpreadsheet, Upload, Pencil,
   Mail, Bot, Zap, CloudOff, Trash2, History, BookOpen, Mic, Square, Paperclip
 } from 'lucide-react';
-import { api } from './api';
+import { api, getToken, setToken, clearToken } from './api';
 
 // --- CONFIGURAÇÕES E DADOS ---
 const LOGIN_PROFILES = [
@@ -25,6 +25,7 @@ const STATUS_COLORS = { 'Aberto': 'bg-rose-100 text-rose-700 border-rose-200', '
 // ============================================================================
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [user, setUser] = useState(null);
   const [view, setView] = useState('sectors');
   const [entries, setEntries] = useState([]);
@@ -37,6 +38,41 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const buildUser = (publicUser) => {
+      const profile = LOGIN_PROFILES.find(p => p.id === publicUser.roleId) || LOGIN_PROFILES[0];
+      return { ...profile, name: publicUser.name, username: publicUser.username };
+  };
+
+  // Restore session from a saved token (if any) on first load.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!getToken()) { setAuthChecking(false); return; }
+      try {
+          const data = await api.auth.me();
+          if (cancelled) return;
+          setUser(buildUser(data.user));
+          setIsAuthenticated(true);
+      } catch (err) {
+          clearToken();
+      } finally {
+          if (!cancelled) setAuthChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // A 401 from any API call (e.g. an expired token) forces a fresh login.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+        setIsAuthenticated(false);
+        setUser(null);
+        setView('sectors');
+    };
+    window.addEventListener('pegasus:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('pegasus:unauthorized', handleUnauthorized);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -65,13 +101,14 @@ export default function App() {
     return () => { cancelled = true; };
   }, [isAuthenticated, reloadKey]);
 
-  const handleLogin = (id, name) => {
-    const profile = LOGIN_PROFILES.find(p => p.id === id) || LOGIN_PROFILES[0];
-    setUser({ ...profile, name });
+  const handleAuthSuccess = (token, publicUser) => {
+    setToken(token);
+    setUser(buildUser(publicUser));
     setIsAuthenticated(true);
   };
 
   const handleLogout = () => {
+    clearToken();
     setIsAuthenticated(false);
     setUser(null);
     setView('sectors');
@@ -132,7 +169,15 @@ export default function App() {
       setView('form');
   };
 
-  if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} />;
+  if (authChecking) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
+              <Loader2 className="animate-spin text-blue-600" size={40} />
+          </div>
+      );
+  }
+
+  if (!isAuthenticated) return <LoginScreen onAuthSuccess={handleAuthSuccess} />;
 
   if (loading) {
       return (
@@ -1014,23 +1059,8 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
     );
 }
 
-function LoginScreen({ onLogin }) {
-  const [selectedProfile, setSelectedProfile] = useState(null);
-  const [name, setName] = useState('');
-
-  const handleSelectProfile = (profile) => {
-      setSelectedProfile(profile);
-      let savedName = '';
-      try { savedName = localStorage.getItem(`pegasus_name_${profile.id}`) || ''; } catch (err) {}
-      setName(savedName);
-  };
-
-  const handleConfirm = () => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      try { localStorage.setItem(`pegasus_name_${selectedProfile.id}`, trimmed); } catch (err) {}
-      onLogin(selectedProfile.id, trimmed);
-  };
+function LoginScreen({ onAuthSuccess }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 overflow-hidden">
@@ -1038,35 +1068,131 @@ function LoginScreen({ onLogin }) {
         <div className="absolute -bottom-8 right-10 w-72 h-72 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
         <div className="relative z-10 w-full max-w-md p-6">
             <div className="backdrop-blur-sm bg-white/80 border border-white/60 rounded-3xl p-10 shadow-xl hover:shadow-2xl transition-all duration-300">
-                <div className="mb-10 text-center"><div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg"><Activity size={32} className="text-white" /></div><h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">PEGASUS</h1><p className="text-indigo-600 text-sm font-semibold">Gestão Inteligente de Ativos Hospitalares</p></div>
-                {!selectedProfile ? (
-                    <div className="space-y-3"><p className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] text-center mb-6">Selecione seu perfil</p>{LOGIN_PROFILES.map(profile => (<button key={profile.id} onClick={() => handleSelectProfile(profile)} className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/60 text-slate-900 font-bold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex items-center justify-between px-6 group hover:scale-[1.02]"><div><span className="text-sm tracking-wide block">{profile.name}</span><span className="text-xs text-slate-500 font-normal">{profile.role}</span></div><ChevronRight size={20} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" /></button>))}</div>
-                ) : (
-                    <div className="space-y-4 animate-fade-in">
-                        <button onClick={() => setSelectedProfile(null)} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-600"><ArrowLeft size={14}/> Trocar perfil</button>
-                        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
-                            <p className="text-sm font-bold text-slate-800">{selectedProfile.name}</p>
-                            <p className="text-xs text-slate-500">{selectedProfile.role}</p>
-                        </div>
-                        <div>
-                            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Seu nome</label>
-                            <input
-                                autoFocus
-                                className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                                placeholder="Como você quer ser identificado"
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && handleConfirm()}
-                            />
-                        </div>
-                        <button onClick={handleConfirm} disabled={!name.trim()} className="w-full py-4 bg-blue-600 disabled:opacity-40 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest text-xs">Entrar</button>
-                    </div>
-                )}
+                <div className="mb-8 text-center"><div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg"><Activity size={32} className="text-white" /></div><h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">PEGASUS</h1><p className="text-indigo-600 text-sm font-semibold">Gestão Inteligente de Ativos Hospitalares</p></div>
+
+                <div className="flex bg-slate-100 rounded-2xl p-1 mb-6">
+                    <button onClick={() => setMode('login')} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === 'login' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Entrar</button>
+                    <button onClick={() => setMode('register')} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === 'register' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Criar conta</button>
+                </div>
+
+                {mode === 'login'
+                    ? <LoginForm onAuthSuccess={onAuthSuccess} />
+                    : <RegisterForm onAuthSuccess={onAuthSuccess} />}
+
                 <p className="text-center text-slate-400 text-xs mt-10 font-semibold opacity-60 tracking-widest">PEGASUS v5.1 • Engenharia Clínica</p>
             </div>
         </div>
     </div>
   );
+}
+
+function LoginForm({ onAuthSuccess }) {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async () => {
+        if (!username.trim() || !password) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await api.auth.login(username.trim(), password);
+            onAuthSuccess(data.token, data.user);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4 animate-fade-in">
+            <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Usuário</label>
+                <input autoFocus className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" value={username} onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+            </div>
+            <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Senha</label>
+                <input type="password" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+            </div>
+            {error && <p className="text-rose-600 text-xs font-bold bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{error}</p>}
+            <button onClick={handleSubmit} disabled={loading || !username.trim() || !password} className="w-full py-4 bg-blue-600 disabled:opacity-40 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2">
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null} Entrar
+            </button>
+        </div>
+    );
+}
+
+function RegisterForm({ onAuthSuccess }) {
+    const [selectedProfile, setSelectedProfile] = useState(null);
+    const [name, setName] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    if (!selectedProfile) {
+        return (
+            <div className="space-y-3 animate-fade-in">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.15em] text-center mb-2">Selecione seu perfil</p>
+                {LOGIN_PROFILES.map(profile => (
+                    <button key={profile.id} onClick={() => setSelectedProfile(profile)} className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200/60 text-slate-900 font-bold py-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-md flex items-center justify-between px-6 group hover:scale-[1.02]">
+                        <div><span className="text-sm tracking-wide block">{profile.name}</span><span className="text-xs text-slate-500 font-normal">{profile.role}</span></div>
+                        <ChevronRight size={20} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
+                    </button>
+                ))}
+            </div>
+        );
+    }
+
+    const handleSubmit = async () => {
+        if (!name.trim() || !username.trim() || password.length < 6) return;
+        if (password !== confirmPassword) { setError('As senhas não coincidem.'); return; }
+        setLoading(true);
+        setError(null);
+        try {
+            const data = await api.auth.register({ name: name.trim(), username: username.trim(), password, roleId: selectedProfile.id });
+            onAuthSuccess(data.token, data.user);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4 animate-fade-in">
+            <button onClick={() => setSelectedProfile(null)} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-600"><ArrowLeft size={14}/> Trocar perfil</button>
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+                <p className="text-sm font-bold text-slate-800">{selectedProfile.name}</p>
+                <p className="text-xs text-slate-500">{selectedProfile.role}</p>
+            </div>
+            <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Seu nome</label>
+                <input autoFocus className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" placeholder="Como você quer ser identificado" value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Usuário</label>
+                <input className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" placeholder="sem espaços, único" value={username} onChange={e => setUsername(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Senha</label>
+                    <input type="password" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" placeholder="mín. 6 caracteres" value={password} onChange={e => setPassword(e.target.value)} />
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-1">Confirmar</label>
+                    <input type="password" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+                </div>
+            </div>
+            {error && <p className="text-rose-600 text-xs font-bold bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{error}</p>}
+            <button onClick={handleSubmit} disabled={loading || !name.trim() || !username.trim() || password.length < 6} className="w-full py-4 bg-blue-600 disabled:opacity-40 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2">
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null} Criar conta e entrar
+            </button>
+        </div>
+    );
 }
 
 function NavBtn({ active, onClick, label, icon }) {

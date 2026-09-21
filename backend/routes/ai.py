@@ -1,8 +1,9 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 import db
 import emails as emails_module
 import llm
+from auth import require_auth
 
 bp = Blueprint("ai", __name__)
 
@@ -28,6 +29,7 @@ def health():
 
 
 @bp.post("/api/melhorar_relato")
+@require_auth
 def melhorar_relato():
     body = request.get_json(force=True, silent=True) or {}
     texto = (body.get("texto") or "").strip()
@@ -45,13 +47,16 @@ def melhorar_relato():
 
 
 @bp.post("/api/salvar_conhecimento")
+@require_auth
 def salvar_conhecimento():
     body = request.get_json(force=True, silent=True) or {}
+    body["author"] = g.current_user["name"]
     row_id = db.save_knowledge(body)
     return jsonify({"status": "ok", "id": row_id})
 
 
 @bp.post("/api/perguntar_assistente")
+@require_auth
 def perguntar_assistente():
     body = request.get_json(force=True, silent=True) or {}
     pergunta = (body.get("pergunta") or "").strip()
@@ -75,6 +80,7 @@ def perguntar_assistente():
 
 
 @bp.get("/api/emails")
+@require_auth
 def listar_emails():
     try:
         resultados = emails_module.get_triaged_emails()

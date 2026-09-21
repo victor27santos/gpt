@@ -15,8 +15,7 @@ echo -^> Verificando dependencias do backend...
 backend\venv\Scripts\pip install --quiet -r backend\requirements.txt
 
 if not exist "backend\.env" (
-    copy backend\.env.example backend\.env
-    echo -^> Criado backend\.env — edite esse arquivo e adicione sua ANTHROPIC_API_KEY para a IA funcionar.
+    backend\venv\Scripts\python backend\generate_env.py
 )
 
 if not exist "node_modules" (
