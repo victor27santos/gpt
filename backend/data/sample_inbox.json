@@ -1,0 +1,27 @@
+[
+  {
+    "assunto": "Urgente - Monitor UTI 5 travando",
+    "remetente": "enfermagem.uti5@hospital.com",
+    "corpo": "Bom dia, o monitor multiparamétrico do leito 12 da UTI Adulto está travando e reiniciando sozinho durante o monitoramento. Paciente em estado crítico, por favor mandem um técnico agora."
+  },
+  {
+    "assunto": "Ventilador PB840 alarme E04 intermitente",
+    "remetente": "fisioterapia.cc@hospital.com",
+    "corpo": "O ventilador pulmonar do centro cirúrgico está apresentando o alarme E04 de forma intermitente. Conseguimos contornar por enquanto, mas precisa de avaliação técnica assim que possível, antes da próxima cirurgia agendada."
+  },
+  {
+    "assunto": "Solicitação de calibração - Bombas de infusão 5º andar",
+    "remetente": "farmacia@hospital.com",
+    "corpo": "Precisamos calibrar as bombas de infusão do 5º andar, o prazo do certificado está vencendo na próxima semana. Podem agendar a visita técnica?"
+  },
+  {
+    "assunto": "Dúvida sobre manual do desfibrilador novo",
+    "remetente": "residente.cardio@hospital.com",
+    "corpo": "Onde encontro o manual de uso do desfibrilador novo do centro cirúrgico? Preciso para o treinamento dos residentes na próxima semana."
+  },
+  {
+    "assunto": "Ar condicionado da sala de tomografia quebrado",
+    "remetente": "recepcao.cdi@hospital.com",
+    "corpo": "O ar condicionado da sala de tomografia está quebrado há dois dias, a sala está esquentando bastante e isso pode afetar o funcionamento do equipamento de imagem."
+  }
+]

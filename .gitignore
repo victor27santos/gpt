@@ -3,3 +3,9 @@ dist
 .env
 .env.local
 *.log
+
+# backend (Python)
+backend/venv
+backend/__pycache__
+backend/data/pegasus.db
+backend/.env

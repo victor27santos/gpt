@@ -8,6 +8,7 @@ import {
   GraduationCap, Hash, FileSpreadsheet, Upload, Pencil,
   Mail, Bot, Zap, CloudOff, Trash2, History, BookOpen, Mic, Square, Paperclip
 } from 'lucide-react';
+import { API_BASE_URL } from './config';
 
 // --- CONFIGURAÇÕES E DADOS ---
 const LOGIN_PROFILES = [
@@ -549,7 +550,7 @@ function Form({ onSave, onCancel, initialData, user }) {
       if (!f.description || !f.equipment) { alert("Preencha Equipamento e Descrição."); return; }
       setAnalyzing(true);
       try {
-          const response = await fetch('http://127.0.0.1:5000/api/melhorar_relato', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.description, equipamento: f.equipment }) });
+          const response = await fetch(`${API_BASE_URL}/api/melhorar_relato`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: f.description, equipamento: f.equipment }) });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error);
           let sugestao; try { sugestao = JSON.parse(data.sugestao); } catch(e) { sugestao = data.sugestao; }
@@ -559,7 +560,7 @@ function Form({ onSave, onCancel, initialData, user }) {
 
   const handleSaveClick = async () => {
       onSave(f);
-      try { await fetch('http://127.0.0.1:5000/api/salvar_conhecimento', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString() }) }); } catch (err) {}
+      try { await fetch(`${API_BASE_URL}/api/salvar_conhecimento`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString() }) }); } catch (err) {}
   };
 
   const handleFileUpload = (e) => {
@@ -798,7 +799,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-            const response = await fetch('http://127.0.0.1:5000/api/perguntar_assistente', {
+            const response = await fetch(`${API_BASE_URL}/api/perguntar_assistente`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pergunta: text }),
@@ -830,7 +831,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
         if (!input.description || !input.equipment) return alert("Preencha os campos.");
         setCreateLoading(true);
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/melhorar_relato', {
+            const response = await fetch(`${API_BASE_URL}/api/melhorar_relato`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ texto: input.description, equipamento: input.equipment })
@@ -849,7 +850,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
     const handleSave = async () => {
         if (!result) return;
         try {
-            await fetch('http://127.0.0.1:5000/api/salvar_conhecimento', {
+            await fetch(`${API_BASE_URL}/api/salvar_conhecimento`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: result.titulo_sugerido, equipment: input.equipment, solution: result.solucao_passo_a_passo, author: user.name, date: new Date().toISOString() })
@@ -1167,7 +1168,7 @@ function EmailsIAView() {
     const [emailToDelete, setEmailToDelete] = useState(null);
     const [justification, setJustification] = useState("");
 
-    const fetchEmails = async () => { setLoading(true); setError(null); try { const response = await fetch('http://127.0.0.1:5000/api/emails'); if (!response.ok) throw new Error("Erro ao conectar"); const data = await response.json(); setEmails(prev => { const newItems = data.filter(d => !prev.some(p => p.original_assunto === d.original_assunto) && !deletedEmails.some(del => del.original_assunto === d.original_assunto)); return [...prev, ...newItems]; }); } catch (err) { setError("O Agente IA (Python) parece estar desligado."); } finally { setLoading(false); } };
+    const fetchEmails = async () => { setLoading(true); setError(null); try { const response = await fetch(`${API_BASE_URL}/api/emails`); if (!response.ok) throw new Error("Erro ao conectar"); const data = await response.json(); setEmails(prev => { const newItems = data.filter(d => !prev.some(p => p.original_assunto === d.original_assunto) && !deletedEmails.some(del => del.original_assunto === d.original_assunto)); return [...prev, ...newItems]; }); } catch (err) { setError("O Agente IA (Python) parece estar desligado."); } finally { setLoading(false); } };
     const handleDeleteClick = (email) => { setEmailToDelete(email); setJustification(""); setIsDeleteModalOpen(true); };
     const confirmDelete = () => { if (!justification.trim()) { alert("A justificativa é obrigatória."); return; } const deletedItem = { ...emailToDelete, justificativa: justification, dataExclusao: new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}) }; setDeletedEmails([deletedItem, ...deletedEmails]); setEmails(emails.filter(e => e.original_assunto !== emailToDelete.original_assunto)); setIsDeleteModalOpen(false); setEmailToDelete(null); };
 
