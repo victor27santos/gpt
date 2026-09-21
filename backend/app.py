@@ -3,6 +3,7 @@
 Run with: python app.py  (reads ANTHROPIC_API_KEY / ANTHROPIC_MODEL from .env)
 """
 import os
+import socket
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -49,6 +50,31 @@ def handle_unexpected_error(exc):
     return jsonify({"error": "Erro interno no servidor. Veja o log do backend para detalhes."}), 500
 
 
+def _lan_ip():
+    # Doesn't actually send anything (UDP), just asks the OS which local
+    # interface it would use to reach the internet, to report the address
+    # other devices on the LAN should use.
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
 if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG") == "1"
-    app.run(host="127.0.0.1", port=5000, debug=debug)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "5000"))
+
+    if host in ("0.0.0.0", "::"):
+        lan_ip = _lan_ip()
+        print(f" * Backend acessível nesta máquina em: http://127.0.0.1:{port}")
+        if lan_ip:
+            print(f" * Backend acessível pela rede local em: http://{lan_ip}:{port}")
+            print(f"   (outros dispositivos devem abrir o front-end em http://{lan_ip}:5173)")
+        print(" * Defina HOST=127.0.0.1 no .env para restringir a apenas esta máquina.")
+
+    app.run(host=host, port=port, debug=debug)

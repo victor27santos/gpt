@@ -24,9 +24,11 @@ npm run dev
 
 Abre em `http://localhost:5173`.
 
-Por padrão o front chama a API em `http://127.0.0.1:5000`. Para apontar para
-outro endereço (ex: rodando o backend em outra máquina da rede local), copie
-`.env.example` para `.env` e ajuste `VITE_API_BASE_URL`.
+O front detecta a API automaticamente: chama o backend no mesmo endereço de
+rede pelo qual a página foi aberta, na porta 5000. Não precisa configurar nada
+mesmo acessando de outro dispositivo (veja "Acesso pela rede local" abaixo).
+Só é preciso copiar `.env.example` para `.env` e definir `VITE_API_BASE_URL`
+se o backend rodar num host diferente do front.
 
 ## Rodando o back-end
 
@@ -49,6 +51,29 @@ biblioteca) funciona normalmente sem a IA.
 Por padrão o servidor roda sem o depurador interativo do Flask (não expõe
 stack traces nem console de depuração pela rede). Para depuração local,
 `FLASK_DEBUG=1 python app.py`.
+
+## Acesso pela rede local
+
+Por padrão, tanto o backend (`0.0.0.0:5000`) quanto o front-end em modo dev
+(`0.0.0.0:5173`) aceitam conexões de qualquer dispositivo na mesma rede
+Wi-Fi/local — não só da própria máquina. Ao rodar `python app.py`, o terminal
+mostra o endereço a compartilhar com a equipe, algo como:
+
+```
+ * Backend acessível pela rede local em: http://192.168.1.23:5000
+   (outros dispositivos devem abrir o front-end em http://192.168.1.23:5173)
+```
+
+Qualquer computador/celular na mesma rede abre `http://192.168.1.23:5173` no
+navegador e usa o app normalmente — o front detecta sozinho onde está o
+backend, sem configurar nada em cada dispositivo.
+
+**Atenção:** isso expõe o sistema (sem autenticação real) para qualquer um na
+mesma rede. Adequado para uma equipe pequena testando em uma rede confiável
+(ex: Wi-Fi interno do setor), não para redes públicas/compartilhadas. Para
+restringir de volta a só esta máquina, defina `HOST=127.0.0.1` no
+`backend/.env`. O firewall do sistema operacional também pode pedir para
+liberar as portas 5000 e 5173 na primeira execução.
 
 ## Login
 
