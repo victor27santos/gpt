@@ -15,7 +15,21 @@ src/            front-end (Vite + React + Tailwind)
 backend/        API Flask — persistência (SQLite) + rotas de IA
 ```
 
-## Rodando o front-end
+## Modo rápido: um comando só
+
+```bash
+./start.sh          # Mac/Linux
+start.bat            # Windows (clique duas vezes ou rode no terminal)
+```
+
+Na primeira vez, cria o ambiente Python, instala as dependências e o
+`backend/.env`. Nas próximas vezes só sobe os dois servidores. `Ctrl+C`
+(ou fechar as janelas, no Windows) encerra tudo. Para usar a IA, ainda é
+preciso editar `backend/.env` com sua `ANTHROPIC_API_KEY` (veja abaixo).
+
+## Rodando manualmente (passo a passo, sem o script)
+
+### Front-end
 
 ```bash
 npm install
@@ -30,7 +44,7 @@ mesmo acessando de outro dispositivo (veja "Acesso pela rede local" abaixo).
 Só é preciso copiar `.env.example` para `.env` e definir `VITE_API_BASE_URL`
 se o backend rodar num host diferente do front.
 
-## Rodando o back-end
+### Back-end
 
 ```bash
 cd backend
