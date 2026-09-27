@@ -1,21 +1,81 @@
-"""SQLite persistence for the whole Pegasus backend.
+"""Postgres persistence for the whole Pegasus backend (Supabase in production).
 
-Single connection-per-call style (sqlite3, short-lived connections) is
-plenty for a small hospital team on one server; no ORM needed at this size.
+Single connection-per-call style, short-lived connections — plenty for a
+small hospital team's traffic; no ORM needed at this size.
+
+`_Conn`/`_Cursor` below give the rest of this file a sqlite3-like API
+(`conn.execute(sql_with_question_marks, params).fetchone()/.fetchall()`,
+`cur.lastrowid`) on top of psycopg2, so the many query functions below
+didn't need a line-by-line rewrite for the SQLite -> Postgres move — only
+this adapter and the schema (AUTOINCREMENT -> SERIAL, etc.) changed.
 """
-import sqlite3
+import os
+import re
+import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "data" / "pegasus.db"
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    sys.exit(
+        "DATABASE_URL não configurada em backend/.env — é a string de conexão do "
+        "Postgres (Supabase: Project Settings -> Database -> Connection string -> "
+        "URI). Sem ela o backend não tem onde guardar dados."
+    )
+
+_INSERT_RE = re.compile(r"^\s*insert", re.IGNORECASE)
+
+
+class _Cursor:
+    def __init__(self, cur, lastrowid=None):
+        self._cur = cur
+        self.lastrowid = lastrowid
+        self.rowcount = cur.rowcount
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+
+class _Conn:
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        pg_sql = sql.replace("?", "%s")
+        upper = sql.upper()
+        auto_returning = (
+            _INSERT_RE.match(sql) and "RETURNING" not in upper and "ON CONFLICT" not in upper
+        )
+        if auto_returning:
+            pg_sql = pg_sql.rstrip().rstrip(";") + " RETURNING id"
+        cur.execute(pg_sql, params)
+        lastrowid = None
+        if auto_returning:
+            row = cur.fetchone()
+            lastrowid = row["id"] if row else None
+        return _Cursor(cur, lastrowid)
+
+    def executescript(self, sql):
+        cur = self._conn.cursor()
+        cur.execute(sql)
+        cur.close()
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
 
 
 def get_conn():
-    DB_PATH.parent.mkdir(exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return _Conn(psycopg2.connect(DATABASE_URL))
 
 
 def _today():
@@ -24,6 +84,7 @@ def _today():
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sectors (
+    seq SERIAL,
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     areas TEXT,
@@ -31,13 +92,14 @@ CREATE TABLE IF NOT EXISTS sectors (
     has_sub_sectors INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS sub_sectors (
+    seq SERIAL,
     id TEXT PRIMARY KEY,
     sector_id TEXT NOT NULL REFERENCES sectors(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT
 );
 CREATE TABLE IF NOT EXISTS pendings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     sector_id TEXT NOT NULL REFERENCES sectors(id) ON DELETE CASCADE,
     sub_sector_id TEXT,
     type TEXT,
@@ -50,14 +112,14 @@ CREATE TABLE IF NOT EXISTS pendings (
     last_edit_date TEXT
 );
 CREATE TABLE IF NOT EXISTS pending_updates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     pending_id INTEGER NOT NULL REFERENCES pendings(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     author TEXT,
     date TEXT
 );
 CREATE TABLE IF NOT EXISTS improvements (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     sector_id TEXT NOT NULL REFERENCES sectors(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     description TEXT,
@@ -66,7 +128,7 @@ CREATE TABLE IF NOT EXISTS improvements (
     date TEXT
 );
 CREATE TABLE IF NOT EXISTS improvement_comments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     improvement_id INTEGER NOT NULL REFERENCES improvements(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     author TEXT,
@@ -74,7 +136,7 @@ CREATE TABLE IF NOT EXISTS improvement_comments (
     date TEXT
 );
 CREATE TABLE IF NOT EXISTS fichas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     equipamento TEXT,
     fabricante TEXT,
     modelo TEXT,
@@ -87,13 +149,13 @@ CREATE TABLE IF NOT EXISTS fichas (
     especificacoes TEXT
 );
 CREATE TABLE IF NOT EXISTS ficha_custom_fields (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     ficha_id INTEGER NOT NULL REFERENCES fichas(id) ON DELETE CASCADE,
     key TEXT,
     value TEXT
 );
 CREATE TABLE IF NOT EXISTS entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     title TEXT,
     equipment TEXT,
     category TEXT,
@@ -108,7 +170,7 @@ CREATE TABLE IF NOT EXISTS entries (
     last_edit_date TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     title TEXT,
     date TEXT,
     assigned_to TEXT,
@@ -116,7 +178,7 @@ CREATE TABLE IF NOT EXISTS events (
     description TEXT
 );
 CREATE TABLE IF NOT EXISTS library_docs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     title TEXT,
     equipment TEXT,
     sector_id TEXT,
@@ -124,11 +186,11 @@ CREATE TABLE IF NOT EXISTS library_docs (
     type TEXT,
     date TEXT,
     author TEXT,
-    desc TEXT,
+    doc_desc TEXT,
     media_url TEXT
 );
 CREATE TABLE IF NOT EXISTS knowledge (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     title TEXT,
     equipment TEXT,
     description TEXT,
@@ -148,7 +210,7 @@ CREATE TABLE IF NOT EXISTS email_triage (
     triaged_at TEXT
 );
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
@@ -227,7 +289,7 @@ def _seed_if_empty():
             )
 
     conn.execute(
-        """INSERT INTO library_docs (title, equipment, sector_id, category, type, date, author, desc, media_url)
+        """INSERT INTO library_docs (title, equipment, sector_id, category, type, date, author, doc_desc, media_url)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             "Manual PB840", "Ventilador PB840", "floor-5", "procedimentos", "pdf",
@@ -243,11 +305,11 @@ def _seed_if_empty():
 
 def get_sectors_full():
     conn = get_conn()
-    sectors = conn.execute("SELECT * FROM sectors ORDER BY rowid ASC").fetchall()
+    sectors = conn.execute("SELECT * FROM sectors ORDER BY seq ASC").fetchall()
     result = []
     for sector in sectors:
         sub_sectors = conn.execute(
-            "SELECT * FROM sub_sectors WHERE sector_id = ? ORDER BY rowid ASC", (sector["id"],)
+            "SELECT * FROM sub_sectors WHERE sector_id = ? ORDER BY seq ASC", (sector["id"],)
         ).fetchall()
 
         pendings_rows = conn.execute(
@@ -639,7 +701,7 @@ def _serialize_doc(row):
         "type": row["type"],
         "date": row["date"],
         "author": row["author"],
-        "desc": row["desc"],
+        "desc": row["doc_desc"],
         "mediaUrl": row["media_url"],
     }
 
@@ -654,7 +716,7 @@ def list_library_docs():
 def create_library_doc(data):
     conn = get_conn()
     cur = conn.execute(
-        """INSERT INTO library_docs (title, equipment, sector_id, category, type, date, author, desc, media_url)
+        """INSERT INTO library_docs (title, equipment, sector_id, category, type, date, author, doc_desc, media_url)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.get("title"),
@@ -722,9 +784,17 @@ def get_cached_triage(subject):
 def save_triage(item):
     conn = get_conn()
     conn.execute(
-        """INSERT OR REPLACE INTO email_triage
+        """INSERT INTO email_triage
            (original_assunto, original_remetente, urgencia, categoria, equipamento, resumo, acao_sugerida, triaged_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (original_assunto) DO UPDATE SET
+               original_remetente = EXCLUDED.original_remetente,
+               urgencia = EXCLUDED.urgencia,
+               categoria = EXCLUDED.categoria,
+               equipamento = EXCLUDED.equipamento,
+               resumo = EXCLUDED.resumo,
+               acao_sugerida = EXCLUDED.acao_sugerida,
+               triaged_at = EXCLUDED.triaged_at""",
         (
             item["original_assunto"],
             item["original_remetente"],

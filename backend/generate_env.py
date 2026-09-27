@@ -15,4 +15,6 @@ content = content.replace("SECRET_KEY=", f"SECRET_KEY={secrets.token_hex(32)}", 
 env_path.write_text(content, encoding="utf-8")
 
 print("-> Criado backend/.env (com uma SECRET_KEY gerada automaticamente).")
-print("   Edite esse arquivo e adicione sua ANTHROPIC_API_KEY para a IA funcionar.")
+print("   Falta editar esse arquivo e preencher DATABASE_URL (obrigatória) e,")
+print("   se quiser upload de arquivos e a IA funcionando, as chaves do Supabase")
+print("   e a ANTHROPIC_API_KEY. Veja o README para onde encontrar cada uma.")

@@ -5,94 +5,113 @@ pendências de manutenção por setor, agenda técnica, mural de melhorias, bibl
 de documentos e dois recursos de IA: um consultor técnico e um agente de triagem
 de e-mails.
 
-Projeto de TCC. Front-end em React, back-end em Flask com persistência em SQLite,
-IA via API da Anthropic (Claude).
+Projeto de TCC. Front-end em React, back-end em Flask com persistência em
+Postgres (Supabase) e arquivos no Supabase Storage, IA via API da Anthropic
+(Claude).
 
 ## Estrutura
 
 ```
 src/            front-end (Vite + React + Tailwind)
-backend/        API Flask — persistência (SQLite) + rotas de IA
+backend/        API Flask — persistência (Postgres) + upload (Supabase Storage) + rotas de IA
 ```
 
-## Modo rápido: um comando só
+## Rodando localmente
+
+Precisa de um Postgres acessível — pode ser o mesmo projeto Supabase que você
+usa em produção (mais simples, um banco só) ou um Postgres local.
 
 ```bash
 ./start.sh          # Mac/Linux
-start.bat            # Windows (clique duas vezes ou rode no terminal)
+start.bat            # Windows
 ```
 
 Na primeira vez, cria o ambiente Python, instala as dependências e o
-`backend/.env`. Nas próximas vezes só sobe os dois servidores. `Ctrl+C`
-(ou fechar as janelas, no Windows) encerra tudo. Para usar a IA, ainda é
-preciso editar `backend/.env` com sua `ANTHROPIC_API_KEY` (veja abaixo).
+`backend/.env` (com uma `SECRET_KEY` gerada automaticamente). Antes de rodar
+de verdade, edite `backend/.env` e preencha pelo menos `DATABASE_URL`
+(veja "Variáveis de ambiente" abaixo) — sem ela o backend recusa iniciar,
+com uma mensagem explicando o que falta.
 
-## Rodando manualmente (passo a passo, sem o script)
-
-### Front-end
-
-```bash
-npm install
-npm run dev
-```
-
-Abre em `http://localhost:5173`.
-
-O front detecta a API automaticamente: chama o backend no mesmo endereço de
-rede pelo qual a página foi aberta, na porta 5000. Não precisa configurar nada
-mesmo acessando de outro dispositivo (veja "Acesso pela rede local" abaixo).
-Só é preciso copiar `.env.example` para `.env` e definir `VITE_API_BASE_URL`
-se o backend rodar num host diferente do front.
-
-### Back-end
+Ou manualmente:
 
 ```bash
+# back-end
 cd backend
 python3 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
-python3 -c "import secrets; print(secrets.token_hex(32))"   # cole o resultado em SECRET_KEY= no .env
+cp .env.example .env             # depois preencha DATABASE_URL e as demais chaves
 python app.py
+
+# front-end (outro terminal, na raiz do projeto)
+npm install
+npm run dev
 ```
 
-`SECRET_KEY` é obrigatória (assina as sessões de login) — sem ela o servidor
-recusa iniciar, com uma mensagem explicando o que fazer. `./start.sh`/
-`start.bat` geram essa chave automaticamente; rodando manualmente, é o passo
-acima.
+Front-end em `http://localhost:5173`, back-end em `http://127.0.0.1:5000`. O
+front detecta a API automaticamente pelo mesmo host da página (funciona sem
+configurar nada mesmo acessando de outro dispositivo na rede local) — só
+defina `VITE_API_BASE_URL` (no `.env` da raiz) se o backend estiver em outro
+domínio, como acontece no deploy online (veja abaixo).
 
-Sobe em `http://127.0.0.1:5000`. Na primeira execução cria e popula
-`backend/data/pegasus.db` (SQLite) com os setores, fichas e documento de
-exemplo. Sem uma `ANTHROPIC_API_KEY` válida em `.env`, as rotas de IA (Agente
-de Triagem e Consultor IA) respondem com um erro claro explicando o que
-falta — o resto do sistema (setores, fichas, processos, agenda, melhorias,
-biblioteca) funciona normalmente sem a IA.
+Por padrão o servidor roda sem o depurador interativo do Flask. Para
+depuração local, `FLASK_DEBUG=1 python app.py`.
 
-Por padrão o servidor roda sem o depurador interativo do Flask (não expõe
-stack traces nem console de depuração pela rede). Para depuração local,
-`FLASK_DEBUG=1 python app.py`.
+## Deploy online (grátis)
 
-## Acesso pela rede local
+Arquitetura: **Vercel** (front-end) + **Render** (back-end) + **Supabase**
+(banco de dados Postgres e armazenamento de arquivos). Nenhum dos três exige
+cartão de crédito no plano gratuito.
 
-Por padrão, tanto o backend (`0.0.0.0:5000`) quanto o front-end em modo dev
-(`0.0.0.0:5173`) aceitam conexões de qualquer dispositivo na mesma rede
-Wi-Fi/local — não só da própria máquina. Ao rodar `python app.py`, o terminal
-mostra o endereço a compartilhar com a equipe, algo como:
+### 1. Supabase (banco de dados + arquivos)
 
-```
- * Backend acessível pela rede local em: http://192.168.1.23:5000
-   (outros dispositivos devem abrir o front-end em http://192.168.1.23:5173)
-```
+1. Crie um projeto em https://supabase.com/dashboard
+2. **Project Settings → Database → Connection string → URI**: essa é a sua
+   `DATABASE_URL`
+3. **Project Settings → API**: copie o **Project URL** (`SUPABASE_URL`) e a
+   **service_role key** (`SUPABASE_SERVICE_KEY` — secreta, nunca no front-end)
+4. **Storage → New bucket**: crie um bucket chamado `pegasus-uploads`, marcado
+   como **Public**
 
-Qualquer computador/celular na mesma rede abre `http://192.168.1.23:5173` no
-navegador e usa o app normalmente — o front detecta sozinho onde está o
-backend, sem configurar nada em cada dispositivo.
+### 2. Render (back-end)
 
-Com login real (veja abaixo), estar na mesma rede não é mais suficiente para
-usar o sistema — ainda assim, prefira uma rede confiável (Wi-Fi interno do
-setor) a uma rede pública. Para restringir de volta a só esta máquina, defina
-`HOST=127.0.0.1` no `backend/.env`. O firewall do sistema operacional também
-pode pedir para liberar as portas 5000 e 5173 na primeira execução.
+1. Novo **Web Service** apontando para este repositório no GitHub
+2. **Root Directory**: `backend`
+3. **Build Command**: `pip install -r requirements.txt`
+4. **Start Command**: `gunicorn app:app --bind 0.0.0.0:$PORT`
+5. Em **Environment**, adicione as variáveis (mesmos nomes do
+   `backend/.env.example`): `SECRET_KEY` (gere com
+   `python3 -c "import secrets; print(secrets.token_hex(32))"`),
+   `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
+   `SUPABASE_BUCKET=pegasus-uploads`, `ANTHROPIC_API_KEY`,
+   `ANTHROPIC_MODEL=claude-sonnet-5`
+6. Deploy. Guarde a URL que o Render gerar (algo como
+   `https://pegasus-backend.onrender.com`)
+
+No plano gratuito o serviço hiberna após 15 minutos sem uso e demora ~30-50s
+para acordar na primeira requisição depois disso — normal, não é um bug.
+
+### 3. Vercel (front-end)
+
+1. Importe este mesmo repositório em https://vercel.com/new (a raiz do
+   projeto já tem o `package.json` do front, não precisa configurar Root
+   Directory)
+2. Em **Environment Variables**, adicione `VITE_API_BASE_URL` com a URL do
+   Render do passo anterior (ex: `https://pegasus-backend.onrender.com`)
+3. Deploy. A Vercel te dá uma URL pública (`https://seu-projeto.vercel.app`)
+   — esse é o link para compartilhar com a equipe
+
+### Variáveis de ambiente (referência)
+
+| Variável | Onde | Obrigatória | O que é |
+|---|---|---|---|
+| `SECRET_KEY` | backend | sim | Assina as sessões de login |
+| `DATABASE_URL` | backend | sim | Conexão com o Postgres (Supabase) |
+| `SUPABASE_URL` | backend | para upload | URL do projeto Supabase |
+| `SUPABASE_SERVICE_KEY` | backend | para upload | Chave secreta para gravar arquivos |
+| `SUPABASE_BUCKET` | backend | para upload | Nome do bucket (padrão `pegasus-uploads`) |
+| `ANTHROPIC_API_KEY` | backend | para IA | Chave da API da Anthropic |
+| `VITE_API_BASE_URL` | front-end | só se front e back estiverem em domínios diferentes | URL do backend |
 
 ## Login
 
@@ -112,11 +131,11 @@ equipe pequena e confiável.
 ## O que já é persistido
 
 Tudo que antes vivia só em memória no navegador agora é salvo no backend
-(SQLite) e sobrevive a reload de página e a reinícios do servidor:
+(Postgres) e sobrevive a reload de página e a reinícios do servidor:
 setores/pendências (com histórico de atualizações), fichas técnicas, processos
 (histórico de manutenções), agenda, mural de melhorias (com comentários) e
 biblioteca técnica. Fotos, vídeos e áudios anexados são enviados de verdade
-para o servidor (`backend/uploads/`) em vez de blobs temporários do navegador.
+para o Supabase Storage em vez de blobs temporários do navegador.
 
 ### Rotas da API
 
@@ -129,7 +148,7 @@ para o servidor (`backend/uploads/`) em vez de blobs temporários do navegador.
 | Processos | `GET/POST /api/entries`, `PUT/DELETE /api/entries/<id>` |
 | Agenda | `GET/POST /api/events` |
 | Biblioteca | `GET/POST /api/library` |
-| Upload de mídia | `POST /api/uploads` (multipart, até 25MB, extensões de imagem/vídeo/áudio/pdf), servido em `GET /uploads/<arquivo>` |
+| Upload de mídia | `POST /api/uploads` (multipart, até 25MB, extensões de imagem/vídeo/áudio/pdf) — retorna a URL pública do Supabase Storage |
 | IA | `POST /api/melhorar_relato`, `POST /api/salvar_conhecimento`, `POST /api/perguntar_assistente`, `GET /api/emails` |
 | Diagnóstico | `GET /api/health` |
 
@@ -142,20 +161,18 @@ Todas as rotas acima, exceto `/api/auth/*` e `/api/health`, exigem o header
 vez de uma caixa real, para a triagem por IA poder ser demonstrada sem
 credenciais de e-mail. Trocar por uma conta real depois é só substituir
 `load_inbox()` em `backend/emails.py` por um cliente IMAP — o resto da lógica
-(chamada à IA, cache em SQLite) não muda.
+(chamada à IA, cache no Postgres) não muda.
 
 ## Limitações conhecidas
 
 - **Sem "esqueci minha senha" nem papel de administrador.** Qualquer pessoa
   pode criar sua própria conta; não há como um coordenador desativar/gerenciar
   contas de outras pessoas ainda.
-- **Arquivos enviados (`/uploads/<arquivo>`) não exigem login para visualizar**
-  — o nome do arquivo é um identificador aleatório não-adivinhável, mas quem
-  tiver o link consegue abrir a foto/vídeo/áudio sem estar logado. Aceitável
-  para a maioria dos casos, mas vale saber.
-- **Pensado para rede local**, não para múltiplos servidores/deploy distribuído
-  (SQLite com um arquivo local, uploads em disco local). Para colocar online
-  de verdade (fora da rede local), é preciso migrar para um banco de dados e
-  armazenamento de arquivos hospedados — ainda não feito.
+- **Arquivos enviados não exigem login para visualizar** — o nome do arquivo
+  é um identificador aleatório não-adivinhável, mas quem tiver o link
+  consegue abrir a foto/vídeo/áudio sem estar logado. Aceitável para a
+  maioria dos casos, mas vale saber.
+- **Backend gratuito hiberna após inatividade** (Render free tier) — a
+  primeira requisição depois de um tempo sem uso demora ~30-50s.
 - **Sem testes automatizados** além dos scripts manuais usados durante o
   desenvolvimento.

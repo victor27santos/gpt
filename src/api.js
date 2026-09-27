@@ -56,7 +56,8 @@ async function uploadFile(file) {
     throw new Error(err.error || 'Falha no upload do arquivo.');
   }
   const data = await res.json();
-  return `${API_BASE_URL}${data.url}`;
+  // The backend returns an absolute URL (Supabase Storage's public URL).
+  return /^https?:\/\//.test(data.url) ? data.url : `${API_BASE_URL}${data.url}`;
 }
 
 export const api = {

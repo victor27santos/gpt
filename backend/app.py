@@ -5,10 +5,9 @@ Run with: python app.py  (reads ANTHROPIC_API_KEY / ANTHROPIC_MODEL from .env)
 import os
 import socket
 import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
@@ -33,22 +32,14 @@ from routes.library import bp as library_bp
 from routes.sectors import bp as sectors_bp
 from routes.uploads import bp as uploads_bp
 
-UPLOAD_DIR = Path(__file__).parent / "uploads"
-
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB, matches routes/uploads.py
 CORS(app)
 
 db.init_db()
-UPLOAD_DIR.mkdir(exist_ok=True)
 
 for blueprint in (auth_bp, ai_bp, sectors_bp, fichas_bp, entries_bp, events_bp, library_bp, uploads_bp):
     app.register_blueprint(blueprint)
-
-
-@app.get("/uploads/<path:filename>")
-def serve_upload(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
 
 
 @app.errorhandler(Exception)
