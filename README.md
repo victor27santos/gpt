@@ -176,3 +176,9 @@ credenciais de e-mail. Trocar por uma conta real depois é só substituir
   primeira requisição depois de um tempo sem uso demora ~30-50s.
 - **Sem testes automatizados** além dos scripts manuais usados durante o
   desenvolvimento.
+- **Descarte de e-mails no Agente IA é só local (navegador).** A caixa de
+  entrada em `/api/emails` já é simulada (`sample_inbox.json`); quando um
+  e-mail é descartado com justificativa, isso não é salvo no backend — ao
+  recarregar a página, ele volta e a justificativa some. Decisão consciente
+  por enquanto (dado de demonstração); persistir isso de verdade exigiria
+  uma tabela nova + rotas.
