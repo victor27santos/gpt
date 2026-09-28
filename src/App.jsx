@@ -925,7 +925,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
 
         const textLower = text.toLowerCase().trim();
         const fichaEncontrada = (fichas || []).find(f =>
-            (f.patrimonio || '') === textLower ||
+            (f.patrimonio || '').toLowerCase() === textLower ||
             (f.equipamento || '').toLowerCase().includes(textLower) ||
             (f.modelo || '').toLowerCase().includes(textLower)
         );
