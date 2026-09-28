@@ -563,6 +563,54 @@ def create_ficha(data):
     return _serialize_ficha(row, cf)
 
 
+def update_ficha(ficha_id, data):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM fichas WHERE id = ?", (ficha_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    conn.execute(
+        """UPDATE fichas SET equipamento = ?, fabricante = ?, modelo = ?, patrimonio = ?, setor = ?,
+           instalacao = ?, ultima_calib = ?, prox_calib = ?, status = ?, especificacoes = ? WHERE id = ?""",
+        (
+            data.get("equipamento", row["equipamento"]),
+            data.get("fabricante", row["fabricante"]),
+            data.get("modelo", row["modelo"]),
+            data.get("patrimonio", row["patrimonio"]),
+            data.get("setor", row["setor"]),
+            data.get("instalacao", row["instalacao"]),
+            data.get("ultimaCalib", row["ultima_calib"]),
+            data.get("proxCalib", row["prox_calib"]),
+            data.get("status", row["status"]),
+            data.get("especificacoes", row["especificacoes"]),
+            ficha_id,
+        ),
+    )
+    if "customFields" in data:
+        conn.execute("DELETE FROM ficha_custom_fields WHERE ficha_id = ?", (ficha_id,))
+        for field in data.get("customFields") or []:
+            if not field.get("key") and not field.get("value"):
+                continue
+            conn.execute(
+                "INSERT INTO ficha_custom_fields (ficha_id, key, value) VALUES (?, ?, ?)",
+                (ficha_id, field.get("key"), field.get("value")),
+            )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM fichas WHERE id = ?", (ficha_id,)).fetchone()
+    cf = conn.execute("SELECT key, value FROM ficha_custom_fields WHERE ficha_id = ?", (ficha_id,)).fetchall()
+    conn.close()
+    return _serialize_ficha(updated, cf)
+
+
+def delete_ficha(ficha_id):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM fichas WHERE id = ?", (ficha_id,))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
+
+
 # --- entries (processos) ------------------------------------------------------------------
 
 def _serialize_entry(row):
@@ -689,6 +737,38 @@ def create_event(data):
     return _serialize_event(row)
 
 
+def update_event(event_id, data):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    conn.execute(
+        "UPDATE events SET title = ?, date = ?, assigned_to = ?, priority = ?, description = ? WHERE id = ?",
+        (
+            data.get("title", row["title"]),
+            data.get("date", row["date"]),
+            data.get("assignedTo", row["assigned_to"]),
+            data.get("priority", row["priority"]),
+            data.get("description", row["description"]),
+            event_id,
+        ),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    conn.close()
+    return _serialize_event(updated)
+
+
+def delete_event(event_id):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
+
+
 # --- library docs --------------------------------------------------------------------------
 
 def _serialize_doc(row):
@@ -734,6 +814,42 @@ def create_library_doc(data):
     row = conn.execute("SELECT * FROM library_docs WHERE id = ?", (cur.lastrowid,)).fetchone()
     conn.close()
     return _serialize_doc(row)
+
+
+def update_library_doc(doc_id, data):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM library_docs WHERE id = ?", (doc_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    conn.execute(
+        """UPDATE library_docs SET title = ?, equipment = ?, sector_id = ?, category = ?, type = ?,
+           author = ?, doc_desc = ?, media_url = ? WHERE id = ?""",
+        (
+            data.get("title", row["title"]),
+            data.get("equipment", row["equipment"]),
+            data.get("sectorId", row["sector_id"]),
+            data.get("category", row["category"]),
+            data.get("type", row["type"]),
+            data.get("author", row["author"]),
+            data.get("desc", row["doc_desc"]),
+            data.get("mediaUrl", row["media_url"]),
+            doc_id,
+        ),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM library_docs WHERE id = ?", (doc_id,)).fetchone()
+    conn.close()
+    return _serialize_doc(updated)
+
+
+def delete_library_doc(doc_id):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM library_docs WHERE id = ?", (doc_id,))
+    conn.commit()
+    deleted = cur.rowcount > 0
+    conn.close()
+    return deleted
 
 
 # --- knowledge base + email triage cache (used by the AI routes) ---------------------------

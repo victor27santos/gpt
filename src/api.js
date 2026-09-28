@@ -81,6 +81,8 @@ export const api = {
   fichas: {
     list: () => request('/api/fichas'),
     create: (data) => request('/api/fichas', { method: 'POST', body: data }),
+    update: (id, data) => request(`/api/fichas/${id}`, { method: 'PUT', body: data }),
+    remove: (id) => request(`/api/fichas/${id}`, { method: 'DELETE' }),
   },
   entries: {
     list: () => request('/api/entries'),
@@ -91,10 +93,14 @@ export const api = {
   events: {
     list: () => request('/api/events'),
     create: (data) => request('/api/events', { method: 'POST', body: data }),
+    update: (id, data) => request(`/api/events/${id}`, { method: 'PUT', body: data }),
+    remove: (id) => request(`/api/events/${id}`, { method: 'DELETE' }),
   },
   library: {
     list: () => request('/api/library'),
     create: (data) => request('/api/library', { method: 'POST', body: data }),
+    update: (id, data) => request(`/api/library/${id}`, { method: 'PUT', body: data }),
+    remove: (id) => request(`/api/library/${id}`, { method: 'DELETE' }),
   },
   uploads: {
     upload: uploadFile,

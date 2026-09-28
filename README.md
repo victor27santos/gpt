@@ -144,10 +144,10 @@ para o Supabase Storage em vez de blobs temporários do navegador.
 | Autenticação | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
 | Setores/pendências | `GET /api/sectors`, `POST /api/sectors/<id>/pendings`, `PATCH /api/pendings/<id>/status`, `POST /api/pendings/<id>/updates` |
 | Melhorias | `POST /api/sectors/<id>/improvements`, `POST /api/improvements/<id>/comments` |
-| Fichas | `GET/POST /api/fichas` |
+| Fichas | `GET/POST /api/fichas`, `PUT/DELETE /api/fichas/<id>` |
 | Processos | `GET/POST /api/entries`, `PUT/DELETE /api/entries/<id>` |
-| Agenda | `GET/POST /api/events` |
-| Biblioteca | `GET/POST /api/library` |
+| Agenda | `GET/POST /api/events`, `PUT/DELETE /api/events/<id>` |
+| Biblioteca | `GET/POST /api/library`, `PUT/DELETE /api/library/<id>` |
 | Upload de mídia | `POST /api/uploads` (multipart, até 25MB, extensões de imagem/vídeo/áudio/pdf) — retorna a URL pública do Supabase Storage |
 | IA | `POST /api/melhorar_relato`, `POST /api/salvar_conhecimento`, `POST /api/perguntar_assistente`, `GET /api/emails` |
 | Diagnóstico | `GET /api/health` |

@@ -164,6 +164,25 @@ export default function App() {
       }
   };
 
+  const handleUpdateEvent = async (id, eventData) => {
+      try {
+          const updated = await api.events.update(id, eventData);
+          setEvents(prev => prev.map(e => e.id === updated.id ? updated : e));
+      } catch (err) {
+          alert(`Erro ao editar agendamento: ${err.message}`);
+      }
+  };
+
+  const handleDeleteEvent = async (id) => {
+      if (!window.confirm("Excluir este agendamento? Esta ação não pode ser desfeita.")) return;
+      try {
+          await api.events.remove(id);
+          setEvents(prev => prev.filter(e => e.id !== id));
+      } catch (err) {
+          alert(`Erro ao excluir agendamento: ${err.message}`);
+      }
+  };
+
   const handleEditClick = (entry) => {
       setEditingEntry(entry);
       setView('form');
@@ -243,7 +262,7 @@ export default function App() {
         {view === 'list' && <HistoryView entries={entries} onAddClick={() => { setEditingEntry(null); setView('form'); }} onItemClick={e => { setSelectedEntry(e); setView('detail'); }} onEditClick={handleEditClick} onDeleteClick={handleDeleteEntry} />}
         {view === 'fichas' && <FichasView fichas={fichas} setFichas={setFichas} sectors={sectors} user={user} />}
         {view === 'library' && <LibraryView sectors={sectors} user={user} />}
-        {view === 'calendar' && <CalendarView events={events} onAddEvent={handleAddEvent} techs={LOGIN_PROFILES} />}
+        {view === 'calendar' && <CalendarView events={events} onAddEvent={handleAddEvent} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} techs={LOGIN_PROFILES} />}
         {view === 'improvements' && <ImprovementsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} />}
         {view === 'emails' && <EmailsIAView />}
         {view === 'consultor' && <ConsultorView user={user} fichas={fichas} onSaveToLibrary={handleSaveEntry} />}
@@ -272,12 +291,10 @@ function FichasView({ fichas, setFichas, sectors, user }) {
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [selectedFicha, setSelectedFicha] = useState(null);
+    const [editingFichaId, setEditingFichaId] = useState(null);
 
-    const [formData, setFormData] = useState({
-        equipamento: '', fabricante: '', modelo: '', patrimonio: '',
-        setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '',
-        proxCalib: '', status: 'Ativo', especificacoes: '', customFields: []
-    });
+    const emptyFormData = { equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', customFields: [] };
+    const [formData, setFormData] = useState(emptyFormData);
 
     const filteredFichas = fichas.filter(f =>
         (f.equipamento || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -299,13 +316,42 @@ function FichasView({ fichas, setFichas, sectors, user }) {
         setFormData({ ...formData, customFields: updatedFields });
     };
 
+    const closeModal = () => { setShowModal(false); setEditingFichaId(null); setFormData(emptyFormData); };
+
+    const handleEditClick = (ficha) => {
+        setFormData({
+            equipamento: ficha.equipamento || '', fabricante: ficha.fabricante || '', modelo: ficha.modelo || '',
+            patrimonio: ficha.patrimonio || '', setor: ficha.setor || sectors[0]?.name || '', instalacao: ficha.instalacao || '',
+            ultimaCalib: ficha.ultimaCalib || '', proxCalib: ficha.proxCalib || '', status: ficha.status || 'Ativo',
+            especificacoes: ficha.especificacoes || '', customFields: ficha.customFields ? ficha.customFields.map(f => ({ ...f })) : [],
+        });
+        setEditingFichaId(ficha.id);
+        setSelectedFicha(null);
+        setShowModal(true);
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("Excluir esta ficha técnica? Esta ação não pode ser desfeita.")) return;
+        try {
+            await api.fichas.remove(id);
+            setFichas(fichas.filter(f => f.id !== id));
+            setSelectedFicha(null);
+        } catch (err) {
+            alert(`Erro ao excluir ficha: ${err.message}`);
+        }
+    };
+
     const handleSave = async () => {
         if(!formData.equipamento || !formData.patrimonio) return alert("Preencha Equipamento e Patrimônio.");
         try {
-            const created = await api.fichas.create(formData);
-            setFichas([created, ...fichas]);
-            setShowModal(false);
-            setFormData({ equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', customFields: [] });
+            if (editingFichaId) {
+                const updated = await api.fichas.update(editingFichaId, formData);
+                setFichas(fichas.map(f => f.id === updated.id ? updated : f));
+            } else {
+                const created = await api.fichas.create(formData);
+                setFichas([created, ...fichas]);
+            }
+            closeModal();
         } catch (err) {
             alert(`Erro ao salvar ficha: ${err.message}`);
         }
@@ -325,7 +371,7 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={16} />
                                 <input type="text" placeholder="Buscar Patrimônio ou Nome..." className="w-full md:w-72 pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-xs shadow-sm transition-all" value={search} onChange={(e) => setSearch(e.target.value)} />
                             </div>
-                            <button onClick={() => setShowModal(true)} className="bg-amber-600 text-white px-4 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-amber-700 shadow-md flex items-center gap-2 transition-all active:scale-95">
+                            <button onClick={() => { setFormData(emptyFormData); setEditingFichaId(null); setShowModal(true); }} className="bg-amber-600 text-white px-4 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-amber-700 shadow-md flex items-center gap-2 transition-all active:scale-95">
                                 <Plus size={16}/> <span className="hidden sm:block">Nova Ficha</span>
                             </button>
                         </div>
@@ -335,8 +381,12 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                 <div className="p-8 bg-slate-50/30 flex-grow">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredFichas.map(ficha => (
-                            <div key={ficha.id} onClick={() => setSelectedFicha(ficha)} className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-amber-300 transition-all flex flex-col cursor-pointer group">
-                                <div className="flex justify-between items-start mb-4">
+                            <div key={ficha.id} onClick={() => setSelectedFicha(ficha)} className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-amber-300 transition-all flex flex-col cursor-pointer group relative">
+                                <div className="absolute top-4 right-4 flex gap-1.5 z-10">
+                                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(ficha); }} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-amber-600 hover:bg-amber-50 shadow-sm border border-slate-100 transition-all" title="Editar Ficha"><Pencil size={12} /></button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(ficha.id); }} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 shadow-sm border border-slate-100 transition-all" title="Excluir Ficha"><Trash2 size={12} /></button>
+                                </div>
+                                <div className="flex justify-between items-start mb-4 pr-16">
                                     <div className="p-3 rounded-2xl bg-amber-50 text-amber-600"><HardDrive size={24}/></div>
                                     <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border">PAT: {ficha.patrimonio}</span>
                                 </div>
@@ -356,8 +406,8 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in">
                     <div className="bg-white w-full max-w-3xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                            <h3 className="font-black text-slate-800 flex items-center gap-2"><ClipboardList className="text-amber-600"/> Cadastrar Ficha Técnica</h3>
-                            <button onClick={() => setShowModal(false)} className="p-2 hover:bg-rose-50 hover:text-rose-500 rounded-full transition-colors"><X size={20}/></button>
+                            <h3 className="font-black text-slate-800 flex items-center gap-2"><ClipboardList className="text-amber-600"/> {editingFichaId ? 'Editar Ficha Técnica' : 'Cadastrar Ficha Técnica'}</h3>
+                            <button onClick={closeModal} className="p-2 hover:bg-rose-50 hover:text-rose-500 rounded-full transition-colors"><X size={20}/></button>
                         </div>
                         <div className="p-8 flex-grow overflow-y-auto space-y-6">
 
@@ -400,8 +450,8 @@ function FichasView({ fichas, setFichas, sectors, user }) {
 
                         </div>
                         <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setShowModal(false)} className="px-6 py-3 text-slate-500 font-bold text-xs uppercase hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
-                            <button onClick={handleSave} className="bg-amber-600 text-white px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:bg-amber-700 transition-all active:scale-95 flex items-center gap-2"><Save size={16}/> Salvar Ficha</button>
+                            <button onClick={closeModal} className="px-6 py-3 text-slate-500 font-bold text-xs uppercase hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                            <button onClick={handleSave} className="bg-amber-600 text-white px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:bg-amber-700 transition-all active:scale-95 flex items-center gap-2"><Save size={16}/> {editingFichaId ? 'Salvar Alterações' : 'Salvar Ficha'}</button>
                         </div>
                     </div>
                 </div>
@@ -445,9 +495,13 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                                 </>
                             )}
                         </div>
-                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:hidden">
+                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest print:hidden">
                             <span>Data Instalação: {selectedFicha.instalacao || 'N/A'}</span>
-                            <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl transition-all shadow-md"><FileText size={14}/> Exportar Ficha PDF</button>
+                            <div className="flex gap-2">
+                                <button onClick={() => handleEditClick(selectedFicha)} className="flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 px-4 py-3 rounded-xl transition-all"><Pencil size={14}/> Editar</button>
+                                <button onClick={() => handleDelete(selectedFicha.id)} className="flex items-center gap-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-xl transition-all"><Trash2 size={14}/> Excluir</button>
+                                <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl transition-all shadow-md"><FileText size={14}/> Exportar PDF</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1222,11 +1276,41 @@ function LibraryView({ sectors, user }) {
     const [filterCategory, setFilterCategory] = useState('all');
     const [search, setSearch] = useState('');
     const [selectedDoc, setSelectedDoc] = useState(null);
+    const [editingDoc, setEditingDoc] = useState(null);
+    const [docFormData, setDocFormData] = useState({ title: '', equipment: '', category: 'procedimentos', desc: '' });
     const fileInputRef = useRef(null);
 
     const [docs, setDocs] = useState([]);
     const [loadingDocs, setLoadingDocs] = useState(true);
     const [uploadingDoc, setUploadingDoc] = useState(false);
+
+    const handleEditDocClick = (doc) => {
+        setDocFormData({ title: doc.title || '', equipment: doc.equipment || '', category: doc.category || 'procedimentos', desc: doc.desc || '' });
+        setEditingDoc(doc);
+        setSelectedDoc(null);
+    };
+
+    const handleSaveDocEdit = async () => {
+        if (!docFormData.title.trim()) return alert("O título é obrigatório.");
+        try {
+            const updated = await api.library.update(editingDoc.id, docFormData);
+            setDocs(docs.map(d => d.id === updated.id ? updated : d));
+            setEditingDoc(null);
+        } catch (err) {
+            alert(`Erro ao salvar documento: ${err.message}`);
+        }
+    };
+
+    const handleDeleteDoc = async (id) => {
+        if (!window.confirm("Excluir este documento da biblioteca? Esta ação não pode ser desfeita.")) return;
+        try {
+            await api.library.remove(id);
+            setDocs(docs.filter(d => d.id !== id));
+            setSelectedDoc(null);
+        } catch (err) {
+            alert(`Erro ao excluir documento: ${err.message}`);
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -1299,8 +1383,12 @@ function LibraryView({ sectors, user }) {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {filteredDocs.map(doc => {
                                 return (
-                                    <div key={doc.id} onClick={() => setSelectedDoc(doc)} className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-emerald-300 transition-all flex flex-col cursor-pointer group">
-                                        <div className="flex justify-between items-start mb-4">
+                                    <div key={doc.id} onClick={() => setSelectedDoc(doc)} className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-emerald-300 transition-all flex flex-col cursor-pointer group relative">
+                                        <div className="absolute top-4 right-4 flex gap-1.5 z-10">
+                                            <button onClick={(e) => { e.stopPropagation(); handleEditDocClick(doc); }} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 shadow-sm border border-slate-100 transition-all" title="Editar Documento"><Pencil size={12} /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteDoc(doc.id); }} className="p-1.5 bg-white rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 shadow-sm border border-slate-100 transition-all" title="Excluir Documento"><Trash2 size={12} /></button>
+                                        </div>
+                                        <div className="flex justify-between items-start mb-4 pr-16">
                                             <div className={`p-3 rounded-2xl ${doc.type === 'pdf' ? 'bg-rose-50 text-rose-600' : doc.type === 'video' ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>{getIconForType(doc.type)}</div>
                                             <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border border-slate-200">{doc.category}</span>
                                         </div>
@@ -1318,7 +1406,21 @@ function LibraryView({ sectors, user }) {
                 </div>
             </div>
             {selectedDoc && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in"><div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[90vh]"><div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center"><div><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border mr-2 ${selectedDoc.type === 'pdf' ? 'bg-rose-50 text-rose-700 border-rose-200' : selectedDoc.type === 'video' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>Formato {selectedDoc.type}</span><span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{selectedDoc.category}</span></div><button onClick={() => setSelectedDoc(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all"><X size={20}/></button></div><div className="p-8 flex-grow flex flex-col overflow-y-auto"><h2 className="text-2xl font-black text-slate-800 mb-2">{selectedDoc.title}</h2><p className="text-slate-500 font-medium mb-6 text-sm">{selectedDoc.desc}</p><div className="flex-grow bg-slate-100 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden min-h-[300px]">{selectedDoc.mediaUrl ? ( selectedDoc.type === 'image' ? <img src={selectedDoc.mediaUrl} className="max-w-full max-h-full object-contain rounded-xl"/> : selectedDoc.type === 'video' ? <video src={selectedDoc.mediaUrl} controls className="max-w-full max-h-full rounded-xl"/> : <iframe src={selectedDoc.mediaUrl} title={selectedDoc.title} className="w-full h-full min-h-[300px] rounded-xl bg-white"/> ) : ( <div className="text-center"><FileText size={64} className="mx-auto mb-4 opacity-50" /><p className="font-bold uppercase tracking-widest text-sm">Arquivo Temporário</p></div> )}</div></div><div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center"><div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> Local: Geral</div>{selectedDoc.mediaUrl ? (<a href={selectedDoc.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md"><Download size={16}/> Baixar Arquivo</a>) : (<button disabled className="flex items-center gap-2 bg-slate-200 text-slate-400 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed"><Download size={16}/> Arquivo indisponível</button>)}</div></div></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in"><div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[90vh]"><div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center"><div><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border mr-2 ${selectedDoc.type === 'pdf' ? 'bg-rose-50 text-rose-700 border-rose-200' : selectedDoc.type === 'video' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>Formato {selectedDoc.type}</span><span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{selectedDoc.category}</span></div><button onClick={() => setSelectedDoc(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all"><X size={20}/></button></div><div className="p-8 flex-grow flex flex-col overflow-y-auto"><h2 className="text-2xl font-black text-slate-800 mb-2">{selectedDoc.title}</h2><p className="text-slate-500 font-medium mb-6 text-sm">{selectedDoc.desc}</p><div className="flex-grow bg-slate-100 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden min-h-[300px]">{selectedDoc.mediaUrl ? ( selectedDoc.type === 'image' ? <img src={selectedDoc.mediaUrl} className="max-w-full max-h-full object-contain rounded-xl"/> : selectedDoc.type === 'video' ? <video src={selectedDoc.mediaUrl} controls className="max-w-full max-h-full rounded-xl"/> : <iframe src={selectedDoc.mediaUrl} title={selectedDoc.title} className="w-full h-full min-h-[300px] rounded-xl bg-white"/> ) : ( <div className="text-center"><FileText size={64} className="mx-auto mb-4 opacity-50" /><p className="font-bold uppercase tracking-widest text-sm">Arquivo Temporário</p></div> )}</div></div><div className="p-6 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3"><div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> Local: Geral</div><div className="flex gap-2">
+                <button onClick={() => handleEditDocClick(selectedDoc)} className="flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all"><Pencil size={14}/> Editar</button>
+                <button onClick={() => handleDeleteDoc(selectedDoc.id)} className="flex items-center gap-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all"><Trash2 size={14}/> Excluir</button>
+                {selectedDoc.mediaUrl ? (<a href={selectedDoc.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md"><Download size={16}/> Baixar Arquivo</a>) : (<button disabled className="flex items-center gap-2 bg-slate-200 text-slate-400 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed"><Download size={16}/> Arquivo indisponível</button>)}
+                </div></div></div></div>
+            )}
+
+            {editingDoc && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in"><div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 space-y-4"><div className="flex justify-between items-center"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Pencil className="text-emerald-600" size={20}/> Editar Documento</h3><button onClick={() => setEditingDoc(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button></div>
+                    <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-400" value={docFormData.title} onChange={e => setDocFormData({...docFormData, title: e.target.value})} /></div>
+                    <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Equipamento</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-400" value={docFormData.equipment} onChange={e => setDocFormData({...docFormData, equipment: e.target.value})} /></div>
+                    <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Categoria</label><select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-400" value={docFormData.category} onChange={e => setDocFormData({...docFormData, category: e.target.value})}>{categories.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
+                    <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Descrição</label><textarea rows={3} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none resize-none focus:ring-2 focus:ring-emerald-400" value={docFormData.desc} onChange={e => setDocFormData({...docFormData, desc: e.target.value})} /></div>
+                    <div className="flex gap-2 pt-2"><button onClick={() => setEditingDoc(null)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors text-xs uppercase">Cancelar</button><button onClick={handleSaveDocEdit} className="flex-1 py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 shadow-md transition-all text-xs uppercase tracking-widest">Salvar Alterações</button></div>
+                </div></div>
             )}
         </div>
     );
@@ -1607,11 +1709,13 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
   );
 }
 
-function CalendarView({ events, onAddEvent, techs }) {
+function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent, techs }) {
     const [date, setDate] = useState(new Date());
     const [showModal, setShowModal] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
-    const [newEvent, setNewEvent] = useState({ title: '', date: '', assignedTo: techs[0].name, priority: 'normal', description: '' });
+    const [editingEventId, setEditingEventId] = useState(null);
+    const emptyEvent = { title: '', date: '', assignedTo: techs[0].name, priority: 'normal', description: '' };
+    const [newEvent, setNewEvent] = useState(emptyEvent);
     const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
     const year = date.getFullYear();
@@ -1620,19 +1724,32 @@ function CalendarView({ events, onAddEvent, techs }) {
     const startingDay = getFirstDayOfMonth(year, month);
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const calendarCells = []; for (let i = 0; i < startingDay; i++) calendarCells.push(null); for (let i = 1; i <= totalDays; i++) calendarCells.push(i);
-    const emptyEvent = { title: '', date: '', assignedTo: techs[0].name, priority: 'normal', description: '' };
+    const closeModal = () => { setShowModal(false); setEditingEventId(null); setNewEvent(emptyEvent); };
     const handleSave = () => {
         if (!newEvent.title.trim() || !newEvent.date) return;
-        onAddEvent(newEvent);
-        setNewEvent(emptyEvent);
-        setShowModal(false);
+        if (editingEventId) {
+            onUpdateEvent(editingEventId, newEvent);
+        } else {
+            onAddEvent(newEvent);
+        }
+        closeModal();
+    };
+    const handleEditEventClick = (ev) => {
+        setNewEvent({ title: ev.title || '', date: ev.date || '', assignedTo: ev.assignedTo || techs[0].name, priority: ev.priority || 'normal', description: ev.description || '' });
+        setEditingEventId(ev.id);
+        setSelectedEvent(null);
+        setShowModal(true);
+    };
+    const handleDeleteEventClick = (id) => {
+        onDeleteEvent(id);
+        setSelectedEvent(null);
     };
 
     return (
         <div className="animate-fade-in relative">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div><h1 className="text-2xl font-black text-slate-900 tracking-tight">Cronograma Técnico</h1><p className="text-slate-500 font-medium">Visualização integrada de preventivas e corretivas</p></div>
-                <div className="flex gap-2 w-full md:w-auto"><button onClick={() => setShowModal(true)} className="flex-grow md:flex-grow-0 bg-slate-900 text-white px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors shadow-lg"><Plus size={16}/> Agendar</button></div>
+                <div className="flex gap-2 w-full md:w-auto"><button onClick={() => { setNewEvent(emptyEvent); setEditingEventId(null); setShowModal(true); }} className="flex-grow md:flex-grow-0 bg-slate-900 text-white px-4 py-3 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors shadow-lg"><Plus size={16}/> Agendar</button></div>
             </div>
             <div className="bg-white rounded-[48px] border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
                 <div className="p-6 bg-slate-50 border-b flex justify-between items-center"><button onClick={() => setDate(new Date(year, month - 1, 1))} className="p-2 hover:bg-white rounded-full transition-colors"><ChevronLeft size={20}/></button><h2 className="text-lg font-black text-slate-800 uppercase tracking-widest">{monthNames[month]} {year}</h2><button onClick={() => setDate(new Date(year, month + 1, 1))} className="p-2 hover:bg-white rounded-full transition-colors"><ChevronRight size={20}/></button></div>
@@ -1661,11 +1778,11 @@ function CalendarView({ events, onAddEvent, techs }) {
             </div>
 
             {selectedEvent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-6 relative border-4 border-white"><button onClick={() => setSelectedEvent(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><X size={20} className="text-slate-500" /></button><div><span className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${selectedEvent.priority === 'alta' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>{selectedEvent.priority === 'alta' ? 'Prioridade Alta' : 'Normal'}</span><h3 className="text-2xl font-black text-slate-800 mt-4 leading-tight">{selectedEvent.title}</h3><p className="text-xs font-bold text-slate-400 mt-2 flex items-center gap-2 uppercase tracking-wider"><CalendarIcon size={14}/> {selectedEvent.date}</p></div><div className="bg-slate-50 p-6 rounded-2xl border border-slate-100"><p className="text-sm text-slate-600 font-medium italic leading-relaxed">"{selectedEvent.description}"</p></div><div className="flex items-center gap-4 pt-4 border-t border-slate-100"><div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center"><User size={24} className="text-slate-500"/></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Responsável Técnico</p><p className="text-sm font-bold text-slate-800">{selectedEvent.assignedTo}</p></div></div></div></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-6 relative border-4 border-white"><button onClick={() => setSelectedEvent(null)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><X size={20} className="text-slate-500" /></button><div><span className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${selectedEvent.priority === 'alta' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>{selectedEvent.priority === 'alta' ? 'Prioridade Alta' : 'Normal'}</span><h3 className="text-2xl font-black text-slate-800 mt-4 leading-tight">{selectedEvent.title}</h3><p className="text-xs font-bold text-slate-400 mt-2 flex items-center gap-2 uppercase tracking-wider"><CalendarIcon size={14}/> {selectedEvent.date}</p></div>{selectedEvent.description && (<div className="bg-slate-50 p-6 rounded-2xl border border-slate-100"><p className="text-sm text-slate-600 font-medium italic leading-relaxed">"{selectedEvent.description}"</p></div>)}<div className="flex items-center gap-4 pt-4 border-t border-slate-100"><div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center"><User size={24} className="text-slate-500"/></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Responsável Técnico</p><p className="text-sm font-bold text-slate-800">{selectedEvent.assignedTo}</p></div></div><div className="flex gap-2 pt-2"><button onClick={() => handleEditEventClick(selectedEvent)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-xs uppercase"><Pencil size={14}/> Editar</button><button onClick={() => handleDeleteEventClick(selectedEvent.id)} className="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-xs uppercase"><Trash2 size={14}/> Excluir</button></div></div></div>
             )}
 
             {showModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-4"><h3 className="text-xl font-bold text-slate-800">Novo Agendamento</h3><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" placeholder="Título da Atividade" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} /><div className="grid grid-cols-2 gap-4"><input type="date" className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} /><select className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.assignedTo} onChange={e => setNewEvent({...newEvent, assignedTo: e.target.value})}>{techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></div><div className="flex gap-2 pt-2"><button onClick={() => { setShowModal(false); setNewEvent(emptyEvent); }} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button><button onClick={handleSave} disabled={!newEvent.title.trim() || !newEvent.date} className="flex-1 py-3 bg-blue-600 disabled:opacity-40 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">Salvar</button></div></div></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-4"><h3 className="text-xl font-bold text-slate-800">{editingEventId ? 'Editar Agendamento' : 'Novo Agendamento'}</h3><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" placeholder="Título da Atividade" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} /><div className="grid grid-cols-2 gap-4"><input type="date" className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} /><select className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.assignedTo} onChange={e => setNewEvent({...newEvent, assignedTo: e.target.value})}>{techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></div><select className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={newEvent.priority} onChange={e => setNewEvent({...newEvent, priority: e.target.value})}><option value="normal">Prioridade Normal</option><option value="alta">Prioridade Alta</option></select><textarea rows={3} className="w-full p-3 bg-slate-50 border rounded-xl outline-none resize-none" placeholder="Descrição (opcional)" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})} /><div className="flex gap-2 pt-2"><button onClick={closeModal} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button><button onClick={handleSave} disabled={!newEvent.title.trim() || !newEvent.date} className="flex-1 py-3 bg-blue-600 disabled:opacity-40 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">Salvar</button></div></div></div>
             )}
         </div>
     );
