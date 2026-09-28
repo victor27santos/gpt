@@ -1503,7 +1503,7 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
 
   const current = sectors.find(s => s.id === selectedId);
   useEffect(() => { if (current.hasSubSectors && current.subSectors.length > 0) { setSubId(current.subSectors[0].id); } else { setSubId(null); } }, [selectedId]);
-  const filteredPendings = current.pendings.filter(p => !subId || p.subSectorId === subId);
+  const filteredPendings = current.pendings.filter(p => (!subId || p.subSectorId === subId) && p.status !== 'Encerrado');
 
   const handleSavePending = async () => {
       if (!newPendingData.description || !newPendingData.reason) return;
