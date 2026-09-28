@@ -764,7 +764,7 @@ def search_knowledge(query, limit=5):
     like = f"%{query}%"
     rows = conn.execute(
         """SELECT * FROM knowledge
-           WHERE equipment LIKE ? OR title LIKE ? OR description LIKE ? OR solution LIKE ?
+           WHERE equipment ILIKE ? OR title ILIKE ? OR description ILIKE ? OR solution ILIKE ?
            ORDER BY id DESC LIMIT ?""",
         (like, like, like, like, limit),
     ).fetchall()
@@ -817,10 +817,16 @@ def create_user(name, username, password_hash, role_id):
     if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         conn.close()
         return None
-    cur = conn.execute(
-        "INSERT INTO users (name, username, password_hash, role_id, created_at) VALUES (?, ?, ?, ?, ?)",
-        (name, username, password_hash, role_id, datetime.now(timezone.utc).isoformat()),
-    )
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (name, username, password_hash, role_id, created_at) VALUES (?, ?, ?, ?, ?)",
+            (name, username, password_hash, role_id, datetime.now(timezone.utc).isoformat()),
+        )
+    except psycopg2.errors.UniqueViolation:
+        # Two concurrent registrations with the same username: the pre-check
+        # above can't catch this race, but the column's UNIQUE constraint can.
+        conn.close()
+        return None
     conn.commit()
     row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
     conn.close()

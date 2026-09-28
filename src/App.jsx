@@ -408,17 +408,17 @@ function FichasView({ fichas, setFichas, sectors, user }) {
             )}
 
             {selectedFicha && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in">
-                    <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in print:bg-white print:p-0">
+                    <div id="ficha-print-area" className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] print:max-h-none print:rounded-none print:shadow-none">
                         <div className="p-8 border-b bg-slate-50 flex justify-between items-start">
                             <div>
                                 <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-200">PAT: {selectedFicha.patrimonio}</span>
                                 <h2 className="text-3xl font-black text-slate-800 mt-4 leading-tight">{selectedFicha.equipamento}</h2>
                                 <p className="text-slate-500 font-bold text-sm mt-1">{selectedFicha.fabricante} • Modelo {selectedFicha.modelo}</p>
                             </div>
-                            <button onClick={() => setSelectedFicha(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all"><X size={20}/></button>
+                            <button onClick={() => setSelectedFicha(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all print:hidden"><X size={20}/></button>
                         </div>
-                        <div className="p-8 space-y-6 overflow-y-auto">
+                        <div className="p-8 space-y-6 overflow-y-auto print:overflow-visible">
                             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-3xl border border-slate-100">
                                 <div><p className="text-[9px] font-black text-slate-400 uppercase mb-1">Setor Atual</p><p className="font-bold text-slate-700 text-sm flex items-center gap-1"><MapPin size={14}/> {selectedFicha.setor}</p></div>
                                 <div><p className="text-[9px] font-black text-slate-400 uppercase mb-1">Status Operacional</p><p className="font-black text-emerald-600 text-sm uppercase flex items-center gap-1"><CheckCircle2 size={14}/> {selectedFicha.status}</p></div>
@@ -445,9 +445,9 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                                 </>
                             )}
                         </div>
-                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest print:hidden">
                             <span>Data Instalação: {selectedFicha.instalacao || 'N/A'}</span>
-                            <button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl transition-all shadow-md"><FileText size={14}/> Exportar Ficha PDF</button>
+                            <button onClick={() => window.print()} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl transition-all shadow-md"><FileText size={14}/> Exportar Ficha PDF</button>
                         </div>
                     </div>
                 </div>
@@ -1187,6 +1187,12 @@ function RegisterForm({ onAuthSuccess }) {
                     <input type="password" className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
                 </div>
             </div>
+            {password.length > 0 && password.length < 6 && (
+                <p className="text-amber-600 text-xs font-bold ml-1">Faltam {6 - password.length} caractere(s) para a senha mínima.</p>
+            )}
+            {confirmPassword.length > 0 && password !== confirmPassword && (
+                <p className="text-amber-600 text-xs font-bold ml-1">As senhas ainda não coincidem.</p>
+            )}
             {error && <p className="text-rose-600 text-xs font-bold bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">{error}</p>}
             <button onClick={handleSubmit} disabled={loading || !name.trim() || !username.trim() || password.length < 6} className="w-full py-4 bg-blue-600 disabled:opacity-40 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2">
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null} Criar conta e entrar
@@ -1312,7 +1318,7 @@ function LibraryView({ sectors, user }) {
                 </div>
             </div>
             {selectedDoc && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in"><div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[90vh]"><div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center"><div><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border mr-2 ${selectedDoc.type === 'pdf' ? 'bg-rose-50 text-rose-700 border-rose-200' : selectedDoc.type === 'video' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>Formato {selectedDoc.type}</span><span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{selectedDoc.category}</span></div><button onClick={() => setSelectedDoc(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all"><X size={20}/></button></div><div className="p-8 flex-grow flex flex-col overflow-y-auto"><h2 className="text-2xl font-black text-slate-800 mb-2">{selectedDoc.title}</h2><p className="text-slate-500 font-medium mb-6 text-sm">{selectedDoc.desc}</p><div className="flex-grow bg-slate-100 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden min-h-[300px]">{selectedDoc.mediaUrl ? ( selectedDoc.type === 'image' ? <img src={selectedDoc.mediaUrl} className="max-w-full max-h-full object-contain rounded-xl"/> : selectedDoc.type === 'video' ? <video src={selectedDoc.mediaUrl} controls className="max-w-full max-h-full rounded-xl"/> : <div className="text-center"><FileText size={64} className="mx-auto mb-4 opacity-50" /><p className="font-bold uppercase tracking-widest text-sm">Visualizador de PDF</p></div> ) : ( <div className="text-center"><FileText size={64} className="mx-auto mb-4 opacity-50" /><p className="font-bold uppercase tracking-widest text-sm">Arquivo Temporário</p></div> )}</div></div><div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center"><div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> Local: Geral</div><button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md"><Download size={16}/> Baixar Arquivo</button></div></div></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in"><div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[90vh]"><div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center"><div><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border mr-2 ${selectedDoc.type === 'pdf' ? 'bg-rose-50 text-rose-700 border-rose-200' : selectedDoc.type === 'video' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>Formato {selectedDoc.type}</span><span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{selectedDoc.category}</span></div><button onClick={() => setSelectedDoc(null)} className="p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm border border-slate-200 transition-all"><X size={20}/></button></div><div className="p-8 flex-grow flex flex-col overflow-y-auto"><h2 className="text-2xl font-black text-slate-800 mb-2">{selectedDoc.title}</h2><p className="text-slate-500 font-medium mb-6 text-sm">{selectedDoc.desc}</p><div className="flex-grow bg-slate-100 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden min-h-[300px]">{selectedDoc.mediaUrl ? ( selectedDoc.type === 'image' ? <img src={selectedDoc.mediaUrl} className="max-w-full max-h-full object-contain rounded-xl"/> : selectedDoc.type === 'video' ? <video src={selectedDoc.mediaUrl} controls className="max-w-full max-h-full rounded-xl"/> : <iframe src={selectedDoc.mediaUrl} title={selectedDoc.title} className="w-full h-full min-h-[300px] rounded-xl bg-white"/> ) : ( <div className="text-center"><FileText size={64} className="mx-auto mb-4 opacity-50" /><p className="font-bold uppercase tracking-widest text-sm">Arquivo Temporário</p></div> )}</div></div><div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center"><div className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> Local: Geral</div>{selectedDoc.mediaUrl ? (<a href={selectedDoc.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md"><Download size={16}/> Baixar Arquivo</a>) : (<button disabled className="flex items-center gap-2 bg-slate-200 text-slate-400 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed"><Download size={16}/> Arquivo indisponível</button>)}</div></div></div>
             )}
         </div>
     );
@@ -1457,7 +1463,7 @@ function EmailsIAView() {
                                     </div>
                                     <div className="md:w-1/4 flex flex-col justify-center items-center gap-2 pl-4 border-l border-slate-100">
                                         <div className="text-center mb-2"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-1 text-slate-500 font-bold">{email.original_remetente ? email.original_remetente.charAt(0) : '?'}</div><p className="text-[10px] font-bold text-slate-400 uppercase truncate max-w-[100px]">{email.original_remetente}</p></div>
-                                        <a href="mailto:" className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2"><Mail size={14}/> Abrir E-mail</a>
+                                        <a href={`mailto:${email.original_remetente}?subject=${encodeURIComponent('Re: ' + email.original_assunto)}`} className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2"><Mail size={14}/> Abrir E-mail</a>
                                     </div>
                                 </div>
                             </div>
@@ -1614,7 +1620,13 @@ function CalendarView({ events, onAddEvent, techs }) {
     const startingDay = getFirstDayOfMonth(year, month);
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const calendarCells = []; for (let i = 0; i < startingDay; i++) calendarCells.push(null); for (let i = 1; i <= totalDays; i++) calendarCells.push(i);
-    const handleSave = () => { onAddEvent(newEvent); setShowModal(false); };
+    const emptyEvent = { title: '', date: '', assignedTo: techs[0].name, priority: 'normal', description: '' };
+    const handleSave = () => {
+        if (!newEvent.title.trim() || !newEvent.date) return;
+        onAddEvent(newEvent);
+        setNewEvent(emptyEvent);
+        setShowModal(false);
+    };
 
     return (
         <div className="animate-fade-in relative">
@@ -1653,7 +1665,7 @@ function CalendarView({ events, onAddEvent, techs }) {
             )}
 
             {showModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-4"><h3 className="text-xl font-bold text-slate-800">Novo Agendamento</h3><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" placeholder="Título da Atividade" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} /><div className="grid grid-cols-2 gap-4"><input type="date" className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} /><select className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.assignedTo} onChange={e => setNewEvent({...newEvent, assignedTo: e.target.value})}>{techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></div><div className="flex gap-2 pt-2"><button onClick={() => setShowModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button><button onClick={handleSave} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">Salvar</button></div></div></div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-4"><h3 className="text-xl font-bold text-slate-800">Novo Agendamento</h3><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" placeholder="Título da Atividade" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} /><div className="grid grid-cols-2 gap-4"><input type="date" className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} /><select className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.assignedTo} onChange={e => setNewEvent({...newEvent, assignedTo: e.target.value})}>{techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></div><div className="flex gap-2 pt-2"><button onClick={() => { setShowModal(false); setNewEvent(emptyEvent); }} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button><button onClick={handleSave} disabled={!newEvent.title.trim() || !newEvent.date} className="flex-1 py-3 bg-blue-600 disabled:opacity-40 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">Salvar</button></div></div></div>
             )}
         </div>
     );

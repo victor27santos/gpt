@@ -32,3 +32,21 @@
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
+
+/* "Exportar Ficha PDF" prints only the ficha modal (#ficha-print-area);
+   the user picks "Salvar como PDF" in the browser's print dialog. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #ficha-print-area,
+  #ficha-print-area * {
+    visibility: visible;
+  }
+  #ficha-print-area {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+  }
+}
