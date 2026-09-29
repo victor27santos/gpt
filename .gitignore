@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+
+# backend (Python)
+backend/venv
+backend/__pycache__
+backend/routes/__pycache__
+backend/.env
