@@ -111,6 +111,8 @@ para acordar na primeira requisição depois disso — normal, não é um bug.
 | `SUPABASE_SERVICE_KEY` | backend | para upload | Chave secreta para gravar arquivos |
 | `SUPABASE_BUCKET` | backend | para upload | Nome do bucket (padrão `pegasus-uploads`) |
 | `ANTHROPIC_API_KEY` | backend | para IA | Chave da API da Anthropic |
+| `EMAIL_IMAP_USER` | backend | para o Agente de Triagem IA | E-mail (Gmail) que recebe as solicitações |
+| `EMAIL_IMAP_PASSWORD` | backend | para o Agente de Triagem IA | Senha de app do Gmail (não é a senha normal) |
 | `VITE_API_BASE_URL` | front-end | só se front e back estiverem em domínios diferentes | URL do backend |
 
 ## Login
@@ -170,13 +172,32 @@ promovida) já entra direto na base que a IA usa.
 Todas as rotas acima, exceto `/api/auth/*` e `/api/health`, exigem o header
 `Authorization: Bearer <token>` obtido no login/registro.
 
-### Caixa de entrada de e-mails
+### Caixa de entrada de e-mails (Agente de Triagem IA)
 
-`/api/emails` hoje lê de `backend/data/sample_inbox.json` (dados simulados) em
-vez de uma caixa real, para a triagem por IA poder ser demonstrada sem
-credenciais de e-mail. Trocar por uma conta real depois é só substituir
-`load_inbox()` em `backend/emails.py` por um cliente IMAP — o resto da lógica
-(chamada à IA, cache no Postgres) não muda.
+`/api/emails` lê os e-mails **não lidos** de uma caixa real via IMAP
+(`backend/emails.py`) e classifica cada um com a IA (urgência, categoria,
+equipamento citado, ação sugerida). Cada e-mail processado fica em cache no
+Postgres pelo assunto, então reabrir a tela não gera custo de IA de novo para
+o mesmo e-mail. Os e-mails **não são marcados como lidos** no servidor — ler
+de novo é seguro.
+
+Como configurar (Gmail):
+1. Recomendado: crie uma conta dedicada só para isso (ex.
+   `manutencao.hospital@gmail.com`) e peça para a equipe encaminhar
+   solicitações técnicas para ela — evita misturar com e-mails pessoais e
+   evita a IA processar mensagens sem relação.
+2. Ative a **verificação em duas etapas** na conta
+   (myaccount.google.com/security)
+3. Gere uma **senha de app** em myaccount.google.com/apppasswords (não é a
+   senha normal da conta — é uma senha de 16 caracteres específica para
+   aplicativos)
+4. Defina `EMAIL_IMAP_USER` (o e-mail) e `EMAIL_IMAP_PASSWORD` (a senha de
+   app) no backend (`.env` local ou variáveis de ambiente no Render)
+
+Sem essas duas variáveis configuradas, `/api/emails` responde com um erro
+claro explicando o que falta, em vez de travar. Outros provedores (Outlook /
+Microsoft 365 corporativo, por exemplo) normalmente não aceitam mais login
+IMAP simples — exigiriam um fluxo diferente (OAuth), fora do escopo atual.
 
 ## Limitações conhecidas
 
