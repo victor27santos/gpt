@@ -73,6 +73,7 @@ export const api = {
     create: (sectorId, data) => request(`/api/sectors/${sectorId}/pendings`, { method: 'POST', body: data }),
     updateStatus: (id, status, author) => request(`/api/pendings/${id}/status`, { method: 'PATCH', body: { status, author } }),
     addUpdate: (id, text, author) => request(`/api/pendings/${id}/updates`, { method: 'POST', body: { text, author } }),
+    promote: (id, data) => request(`/api/pendings/${id}/promote`, { method: 'POST', body: data }),
   },
   improvements: {
     create: (sectorId, data) => request(`/api/sectors/${sectorId}/improvements`, { method: 'POST', body: data }),

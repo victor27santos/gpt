@@ -137,12 +137,27 @@ setores/pendências (com histórico de atualizações), fichas técnicas, proces
 biblioteca técnica. Fotos, vídeos e áudios anexados são enviados de verdade
 para o Supabase Storage em vez de blobs temporários do navegador.
 
+### Base de conhecimento do Consultor IA
+
+Toda vez que um técnico salva um Processo ou usa o Consultor IA (modo "Novo
+Protocolo"), isso alimenta automaticamente a tabela `knowledge`, que o
+Consultor Bot usa como contexto pra responder perguntas. Uma pendência
+concluída também pode virar uma entrada dessa base: no detalhe da pendência,
+com status "Concluído" ou "Encerrado", aparece o botão **"Transformar em
+Padrão"** — ele pré-preenche um rascunho (equipamento, problema e a solução
+real, juntando as atualizações manuais registradas no atendimento, não só as
+trocas de status) que a pessoa revisa e confirma antes de salvar. Cada
+pendência só pode virar padrão uma vez (fica marcada com um selo "Já é um
+Padrão" depois). Hoje isso ainda não tem uma etapa de aprovação separada pela
+coordenação — qualquer entrada criada (por Processo, Consultor ou pendência
+promovida) já entra direto na base que a IA usa.
+
 ### Rotas da API
 
 | Recurso | Rotas |
 |---|---|
 | Autenticação | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
-| Setores/pendências | `GET /api/sectors`, `POST /api/sectors/<id>/pendings`, `PATCH /api/pendings/<id>/status`, `POST /api/pendings/<id>/updates` |
+| Setores/pendências | `GET /api/sectors`, `POST /api/sectors/<id>/pendings`, `PATCH /api/pendings/<id>/status`, `POST /api/pendings/<id>/updates`, `POST /api/pendings/<id>/promote` (transforma uma pendência concluída em entrada da base de conhecimento) |
 | Melhorias | `POST /api/sectors/<id>/improvements`, `POST /api/improvements/<id>/comments` |
 | Fichas | `GET/POST /api/fichas`, `PUT/DELETE /api/fichas/<id>` |
 | Processos | `GET/POST /api/entries`, `PUT/DELETE /api/entries/<id>` |

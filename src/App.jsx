@@ -1608,6 +1608,8 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
   const [newPendingData, setNewPendingData] = useState({ id: null, description: '', reason: '', type: 'Corretiva' });
   const [selectedPending, setSelectedPending] = useState(null);
   const [updateText, setUpdateText] = useState('');
+  const [promoteDraft, setPromoteDraft] = useState(null);
+  const [promoting, setPromoting] = useState(false);
 
   const current = sectors.find(s => s.id === selectedId);
   useEffect(() => { if (current.hasSubSectors && current.subSectors.length > 0) { setSubId(current.subSectors[0].id); } else { setSubId(null); } }, [selectedId]);
@@ -1652,6 +1654,37 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
           setUpdateText('');
       } catch (err) {
           alert(`Erro ao adicionar atualização: ${err.message}`);
+      }
+  };
+
+  const openPromoteDraft = (p) => {
+      const manualUpdates = (p.updates || []).filter(u => !/^Status alterado para:/.test(u.text));
+      const timeline = (manualUpdates.length > 0 ? manualUpdates : (p.updates || []))
+          .map(u => `${u.date} — ${u.author}: ${u.text}`).join('\n');
+      setPromoteDraft({
+          pendingId: p.id,
+          title: `${p.type || 'Corretiva'}: ${p.description}`,
+          equipment: p.description || '',
+          description: p.reason || '',
+          solution: timeline || 'Sem atualizações registradas além da abertura.',
+          category: (p.type || 'Corretiva').toLowerCase(),
+      });
+  };
+
+  const handleConfirmPromote = async () => {
+      if (!promoteDraft || !promoteDraft.title.trim()) return;
+      setPromoting(true);
+      try {
+          const { pendingId, ...entry } = promoteDraft;
+          const updated = await api.pendings.promote(pendingId, entry);
+          const updatedPendings = current.pendings.map(p => p.id === pendingId ? updated : p);
+          onUpdateSector({ ...current, pendings: updatedPendings });
+          if (selectedPending && selectedPending.id === pendingId) setSelectedPending(updated);
+          setPromoteDraft(null);
+      } catch (err) {
+          alert(`Erro ao transformar em padrão: ${err.message}`);
+      } finally {
+          setPromoting(false);
       }
   };
 
@@ -1703,7 +1736,41 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 space-y-6"><div className="flex justify-between items-center"><h3 className="text-xl font-black text-rose-600 flex items-center gap-2"><AlertTriangle size={24}/> Nova Pendência</h3><button onClick={() => setShowAddPending(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button></div><div className="space-y-4"><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Equipamento / Falha</label><input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.description} onChange={e => setNewPendingData({...newPendingData, description: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Motivo / Detalhes</label><textarea rows={3} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-sm outline-none focus:ring-2 focus:ring-rose-400 resize-none" value={newPendingData.reason} onChange={e => setNewPendingData({...newPendingData, reason: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Tipo de Serviço</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.type} onChange={e => setNewPendingData({...newPendingData, type: e.target.value})}><option>Corretiva</option><option>Preventiva</option></select></div></div><button onClick={handleSavePending} className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-lg hover:bg-rose-700 transition-all uppercase tracking-widest text-xs">Confirmar</button></div></div>
           )}
           {selectedPending && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"><div className="p-8 bg-slate-50 border-b border-slate-200 flex justify-between items-start"><div><div className="flex gap-2 mb-2"><span className="bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">ID #{selectedPending.id}</span><span className="bg-white border text-slate-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">{selectedPending.date}</span></div><h2 className="text-2xl font-black text-slate-800 leading-tight">{selectedPending.description}</h2></div><button onClick={() => setSelectedPending(null)} className="p-2 hover:bg-slate-200 rounded-full"><X size={24} className="text-slate-400"/></button></div><div className="flex-grow overflow-y-auto p-8 space-y-8"><div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100"><h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Status do Atendimento</h4><div className="flex flex-wrap gap-2">{PENDING_STATUS_FLOW.map(status => (<button key={status} onClick={() => handleStatusChange(selectedPending.id, status)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all border ${selectedPending.status === status ? `${STATUS_COLORS[status]} shadow-md scale-105` : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}>{status}</button>))}</div></div><div className="bg-slate-50 p-6 rounded-3xl border border-slate-100"><h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><FileText size={14}/> Detalhes do Chamado</h4><p className="text-slate-700 font-medium leading-relaxed">{selectedPending.reason}</p></div><div><h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2"><MessageSquare size={14}/> Atualizações</h4><div className="space-y-4 mb-6">{(!selectedPending.updates || selectedPending.updates.length === 0) && (<p className="text-center text-slate-400 text-xs italic py-4">Nenhuma atualização registrada ainda.</p>)}{selectedPending.updates?.map((upd, idx) => (<div key={idx} className="flex gap-4"><div className="w-8 h-8 rounded-full bg-blue-100 flex-shrink-0 flex items-center justify-center font-bold text-blue-600 text-xs">{upd.author.charAt(0)}</div><div className="bg-white border border-slate-100 p-4 rounded-r-2xl rounded-bl-2xl shadow-sm flex-grow"><div className="flex justify-between mb-1"><span className="font-bold text-slate-800 text-xs">{upd.author}</span><span className="text-[10px] text-slate-400">{upd.date}</span></div><p className="text-sm text-slate-600">{upd.text}</p></div></div>))}</div><div className="flex gap-2 items-center bg-slate-50 p-2 rounded-2xl border border-slate-200"><input className="flex-grow bg-transparent px-4 py-2 text-sm outline-none font-medium text-slate-700 placeholder-slate-400" placeholder="Adicionar atualização..." value={updateText} onChange={e => setUpdateText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddUpdate()}/><button onClick={handleAddUpdate} disabled={!updateText} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:bg-slate-300 transition-colors shadow-md"><Send size={16}/></button></div></div></div></div></div>
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"><div className="p-8 bg-slate-50 border-b border-slate-200 flex justify-between items-start"><div><div className="flex gap-2 mb-2"><span className="bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">ID #{selectedPending.id}</span><span className="bg-white border text-slate-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">{selectedPending.date}</span></div><h2 className="text-2xl font-black text-slate-800 leading-tight">{selectedPending.description}</h2></div><button onClick={() => setSelectedPending(null)} className="p-2 hover:bg-slate-200 rounded-full"><X size={24} className="text-slate-400"/></button></div><div className="flex-grow overflow-y-auto p-8 space-y-8"><div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100"><h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Status do Atendimento</h4><div className="flex flex-wrap gap-2">{PENDING_STATUS_FLOW.map(status => (<button key={status} onClick={() => handleStatusChange(selectedPending.id, status)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all border ${selectedPending.status === status ? `${STATUS_COLORS[status]} shadow-md scale-105` : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}>{status}</button>))}</div></div>
+              {(selectedPending.status === 'Concluído' || selectedPending.status === 'Encerrado') && (
+                  <div className="bg-purple-50/50 p-6 rounded-3xl border border-purple-100 flex items-center justify-between gap-4 flex-wrap">
+                      <div>
+                          <h4 className="text-xs font-black text-purple-600 uppercase tracking-widest mb-1 flex items-center gap-2"><Sparkles size={14}/> Base de Conhecimento</h4>
+                          <p className="text-xs text-slate-500 font-medium">Vira um padrão que o Consultor IA usa para responder outros técnicos.</p>
+                      </div>
+                      {selectedPending.promotedToKnowledge ? (
+                          <span className="bg-purple-100 text-purple-700 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 whitespace-nowrap"><CheckCircle2 size={14}/> Já é um Padrão</span>
+                      ) : (
+                          <button onClick={() => openPromoteDraft(selectedPending)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-2 whitespace-nowrap"><Sparkles size={14}/> Transformar em Padrão</button>
+                      )}
+                  </div>
+              )}
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100"><h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><FileText size={14}/> Detalhes do Chamado</h4><p className="text-slate-700 font-medium leading-relaxed">{selectedPending.reason}</p></div><div><h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2"><MessageSquare size={14}/> Atualizações</h4><div className="space-y-4 mb-6">{(!selectedPending.updates || selectedPending.updates.length === 0) && (<p className="text-center text-slate-400 text-xs italic py-4">Nenhuma atualização registrada ainda.</p>)}{selectedPending.updates?.map((upd, idx) => (<div key={idx} className="flex gap-4"><div className="w-8 h-8 rounded-full bg-blue-100 flex-shrink-0 flex items-center justify-center font-bold text-blue-600 text-xs">{upd.author.charAt(0)}</div><div className="bg-white border border-slate-100 p-4 rounded-r-2xl rounded-bl-2xl shadow-sm flex-grow"><div className="flex justify-between mb-1"><span className="font-bold text-slate-800 text-xs">{upd.author}</span><span className="text-[10px] text-slate-400">{upd.date}</span></div><p className="text-sm text-slate-600">{upd.text}</p></div></div>))}</div><div className="flex gap-2 items-center bg-slate-50 p-2 rounded-2xl border border-slate-200"><input className="flex-grow bg-transparent px-4 py-2 text-sm outline-none font-medium text-slate-700 placeholder-slate-400" placeholder="Adicionar atualização..." value={updateText} onChange={e => setUpdateText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddUpdate()}/><button onClick={handleAddUpdate} disabled={!updateText} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:bg-slate-300 transition-colors shadow-md"><Send size={16}/></button></div></div></div></div></div>
+          )}
+
+          {promoteDraft && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
+                  <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 space-y-4 max-h-[85vh] overflow-y-auto">
+                      <div className="flex justify-between items-center">
+                          <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Sparkles className="text-purple-600" size={20}/> Transformar em Padrão</h3>
+                          <button onClick={() => setPromoteDraft(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button>
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium">Confira e ajuste antes de salvar — isso entra na base que o Consultor IA usa para responder a equipe.</p>
+                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Título do Padrão</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-purple-400" value={promoteDraft.title} onChange={e => setPromoteDraft({...promoteDraft, title: e.target.value})} /></div>
+                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Equipamento</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-purple-400" value={promoteDraft.equipment} onChange={e => setPromoteDraft({...promoteDraft, equipment: e.target.value})} /></div>
+                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Problema</label><textarea rows={2} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none resize-none focus:ring-2 focus:ring-purple-400" value={promoteDraft.description} onChange={e => setPromoteDraft({...promoteDraft, description: e.target.value})} /></div>
+                      <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Solução Padrão</label><textarea rows={5} className="w-full p-3 bg-emerald-50/40 border border-emerald-100 rounded-xl text-sm font-medium outline-none resize-none focus:ring-2 focus:ring-purple-400" value={promoteDraft.solution} onChange={e => setPromoteDraft({...promoteDraft, solution: e.target.value})} /></div>
+                      <div className="flex gap-2 pt-2">
+                          <button onClick={() => setPromoteDraft(null)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors text-xs uppercase">Cancelar</button>
+                          <button onClick={handleConfirmPromote} disabled={promoting || !promoteDraft.title.trim()} className="flex-1 py-3 bg-purple-600 disabled:opacity-50 text-white font-black rounded-xl hover:bg-purple-700 shadow-md transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2">{promoting ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Confirmar e Salvar</button>
+                      </div>
+                  </div>
+              </div>
           )}
       </div>
   );

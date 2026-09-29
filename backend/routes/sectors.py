@@ -52,6 +52,21 @@ def add_pending_update(pending_id):
     return jsonify(pending)
 
 
+@bp.post("/api/pendings/<int:pending_id>/promote")
+@require_auth
+def promote_pending(pending_id):
+    body = request.get_json(force=True, silent=True) or {}
+    if not (body.get("title") or "").strip():
+        return jsonify({"error": "Campo 'title' é obrigatório."}), 400
+    body["author"] = g.current_user["name"]
+    result = db.promote_pending_to_knowledge(pending_id, body)
+    if not result["ok"]:
+        if result["reason"] == "not_found":
+            return jsonify({"error": "Pendência não encontrada."}), 404
+        return jsonify({"error": "Esta pendência já foi transformada em padrão de conhecimento."}), 409
+    return jsonify(result["pending"])
+
+
 @bp.post("/api/sectors/<sector_id>/improvements")
 @require_auth
 def create_improvement(sector_id):

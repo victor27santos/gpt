@@ -220,9 +220,19 @@ CREATE TABLE IF NOT EXISTS users (
 """
 
 
+# Schema changes to tables that may already exist in production (Supabase),
+# where CREATE TABLE IF NOT EXISTS above is a no-op. Each statement must be
+# safe to run every startup (IF NOT EXISTS / IF EXISTS guards).
+MIGRATIONS = [
+    "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS promoted_to_knowledge INTEGER NOT NULL DEFAULT 0",
+]
+
+
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
+    for stmt in MIGRATIONS:
+        conn.execute(stmt)
     conn.commit()
     conn.close()
     _seed_if_empty()
@@ -364,6 +374,7 @@ def _serialize_pending(row, updates):
         "subSectorId": row["sub_sector_id"],
         "lastEditor": row["last_editor"],
         "lastEditDate": row["last_edit_date"],
+        "promotedToKnowledge": bool(row["promoted_to_knowledge"]),
         "updates": [
             {"id": u["id"], "text": u["text"], "author": u["author"], "date": u["date"]}
             for u in updates
@@ -459,6 +470,38 @@ def add_pending_update(pending_id, text, author):
     ).fetchall()
     conn.close()
     return _serialize_pending(updated_row, updates)
+
+
+def promote_pending_to_knowledge(pending_id, entry):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM pendings WHERE id = ?", (pending_id,)).fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "reason": "not_found"}
+    if row["promoted_to_knowledge"]:
+        conn.close()
+        return {"ok": False, "reason": "already_promoted"}
+    conn.execute(
+        """INSERT INTO knowledge (title, equipment, description, solution, category, author, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            entry.get("title"),
+            entry.get("equipment"),
+            entry.get("description"),
+            entry.get("solution"),
+            entry.get("category"),
+            entry.get("author"),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    conn.execute("UPDATE pendings SET promoted_to_knowledge = 1 WHERE id = ?", (pending_id,))
+    conn.commit()
+    updated_row = conn.execute("SELECT * FROM pendings WHERE id = ?", (pending_id,)).fetchone()
+    updates = conn.execute(
+        "SELECT * FROM pending_updates WHERE pending_id = ? ORDER BY id ASC", (pending_id,)
+    ).fetchall()
+    conn.close()
+    return {"ok": True, "pending": _serialize_pending(updated_row, updates)}
 
 
 def create_improvement(sector_id, data):
