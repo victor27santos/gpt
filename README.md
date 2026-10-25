@@ -210,6 +210,16 @@ IMAP simples — exigiriam um fluxo diferente (OAuth), fora do escopo atual.
   maioria dos casos, mas vale saber.
 - **Backend gratuito hiberna após inatividade** (Render free tier) — a
   primeira requisição depois de um tempo sem uso demora ~30-50s.
+- **Supabase gratuito pausa o banco após ~7 dias sem nenhuma requisição à
+  API.** Quando isso acontece, o site carrega mas login/dados não respondem.
+  Reative em supabase.com/dashboard → projeto → "Resume project" (leva
+  alguns minutos; nenhum dado é perdido). Para não depender de lembrar disso
+  manualmente — importante se a apresentação do TCC for daqui a meses —
+  configure um monitor gratuito (ex. [UptimeRobot](https://uptimerobot.com)
+  ou [cron-job.org](https://cron-job.org)) para visitar
+  `https://pegasus-backend-elw8.onrender.com/api/health` a cada 2-3 dias:
+  essa rota faz uma consulta real ao Postgres, então o ping conta como
+  atividade para o Supabase não pausar.
 - **Sem testes automatizados** além dos scripts manuais usados durante o
   desenvolvimento.
 - **Descarte de e-mails no Agente IA é só local (navegador).** A caixa de

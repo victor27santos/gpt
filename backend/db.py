@@ -1004,3 +1004,13 @@ def get_user_by_id(user_id):
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def ping():
+    """A trivial real query, not just a TCP connect — used by /api/health so an
+    external uptime monitor hitting that route also counts as DB activity,
+    which keeps a free-tier Supabase project from auto-pausing after 7 days
+    of no API traffic."""
+    conn = get_conn()
+    conn.execute("SELECT 1")
+    conn.close()

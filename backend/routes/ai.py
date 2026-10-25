@@ -25,7 +25,12 @@ informação suficiente, diga isso claramente e sugira os próximos passos de in
 
 @bp.get("/api/health")
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        db.ping()
+        database = "ok"
+    except Exception:
+        database = "unreachable"
+    return jsonify({"status": "ok", "database": database})
 
 
 @bp.post("/api/melhorar_relato")
