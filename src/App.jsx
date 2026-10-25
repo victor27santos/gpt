@@ -12,9 +12,9 @@ import { api, getToken, setToken, clearToken } from './api';
 
 // --- CONFIGURAÇÕES E DADOS ---
 const LOGIN_PROFILES = [
-  { id: 'coord', name: 'Equipe de Coordenação', role: 'Gestão de Engenharia', canAddImprovements: false, canEditStatus: true, canEditSectorDetails: true },
-  { id: 'tec5x2', name: 'Técnicos 5x2', role: 'Manutenção Rotineira', canAddImprovements: true, canEditStatus: true, canEditSectorDetails: false },
-  { id: 'plantonista', name: 'Técnicos Plantonistas 12x36', role: 'Manutenção de Emergência', canAddImprovements: true, canEditStatus: true, canEditSectorDetails: false }
+  { id: 'coord', name: 'Equipe de Coordenação', role: 'Gestão de Engenharia', canAddImprovements: false, canEditStatus: true, canEditSectorDetails: true, canViewMetrics: true },
+  { id: 'tec5x2', name: 'Técnicos 5x2', role: 'Manutenção Rotineira', canAddImprovements: true, canEditStatus: true, canEditSectorDetails: false, canViewMetrics: false },
+  { id: 'plantonista', name: 'Técnicos Plantonistas 12x36', role: 'Manutenção de Emergência', canAddImprovements: true, canEditStatus: true, canEditSectorDetails: false, canViewMetrics: false }
 ];
 
 const PENDING_STATUS_FLOW = ['Aberto', 'Em atendimento', 'Aguardando peça', 'Concluído', 'Encerrado'];
@@ -244,6 +244,7 @@ export default function App() {
             <div className="w-px h-6 bg-slate-200 mx-1"></div>
             <NavBtn active={view === 'calendar'} onClick={() => setView('calendar')} label="Agenda" icon={<CalendarIcon size={18}/>} />
             <NavBtn active={view === 'improvements'} onClick={() => setView('improvements')} label="Melhorias" icon={<Lightbulb size={18}/>} />
+            {user.canViewMetrics && (<NavBtn active={view === 'metrics'} onClick={() => setView('metrics')} label="Indicadores" icon={<TrendingUp size={18} className={view === 'metrics' ? "text-teal-600" : ""}/>} />)}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -266,6 +267,7 @@ export default function App() {
         {view === 'improvements' && <ImprovementsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} />}
         {view === 'emails' && <EmailsIAView />}
         {view === 'consultor' && <ConsultorView user={user} fichas={fichas} onSaveToLibrary={handleSaveEntry} />}
+        {view === 'metrics' && user.canViewMetrics && <MetricsView />}
         {view === 'form' && <Form initialData={editingEntry} onSave={handleSaveEntry} onCancel={() => setView('list')} user={user} />}
         {view === 'detail' && selectedEntry && <Detail data={selectedEntry} onBack={() => setView('list')} />}
       </main>
@@ -720,7 +722,7 @@ function Form({ onSave, onCancel, initialData, user }) {
 
   const handleSaveClick = async () => {
       onSave(f);
-      try { await api.ai.salvarConhecimento({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString() }); } catch (err) {}
+      try { await api.ai.salvarConhecimento({ ...f, author: user ? user.name : "Técnico", date: new Date().toISOString(), source: 'processo' }); } catch (err) {}
   };
 
   const handleFileUpload = async (e) => {
@@ -998,7 +1000,7 @@ function ConsultorView({ user, fichas, onSaveToLibrary }) {
     const handleSave = async () => {
         if (!result) return;
         try {
-            await api.ai.salvarConhecimento({ title: result.titulo_sugerido, equipment: input.equipment, solution: result.solucao_passo_a_passo, author: user.name, date: new Date().toISOString() });
+            await api.ai.salvarConhecimento({ title: result.titulo_sugerido, equipment: input.equipment, solution: result.solucao_passo_a_passo, author: user.name, date: new Date().toISOString(), source: 'consultor' });
         } catch(e) { console.error(e); }
 
         onSaveToLibrary({ title: result.titulo_sugerido, equipment: input.equipment, description: result.descricao_tecnica, solution: result.solucao_passo_a_passo, category: 'corretiva', mediaType: 'image' });
@@ -1596,6 +1598,136 @@ function EmailsIAView() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function MetricsView() {
+    const [metrics, setMetrics] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await api.metrics.get();
+                if (!cancelled) setMetrics(data);
+            } catch (err) {
+                if (!cancelled) setError(err.message);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="p-20 text-center text-slate-400 flex flex-col items-center">
+                <Loader2 size={40} className="animate-spin mb-4"/>
+                <p className="font-bold text-sm uppercase tracking-widest">Carregando indicadores...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-10 text-center border-2 border-dashed border-rose-200 bg-rose-50 rounded-[32px] text-rose-500 font-bold">
+                <CloudOff size={48} className="mx-auto mb-4 opacity-50"/>{error}
+            </div>
+        );
+    }
+
+    const SOURCE_LABELS = { processo: 'Processos registrados', consultor: 'Consultor IA (Novo Protocolo)', pendencia: 'Pendências resolvidas' };
+    const SOURCE_COLORS = { processo: 'bg-blue-500', consultor: 'bg-purple-500', pendencia: 'bg-emerald-500' };
+    const concludedOrClosed = (metrics.pendingsByStatus['Concluído'] || 0) + (metrics.pendingsByStatus['Encerrado'] || 0);
+    const promotionRate = concludedOrClosed > 0 ? Math.round((metrics.pendingsPromoted / concludedOrClosed) * 100) : 0;
+    const hitRate = metrics.assistantQueriesTotal > 0 ? Math.round((metrics.assistantQueriesWithHits / metrics.assistantQueriesTotal) * 100) : 0;
+    const knowledgeMax = Math.max(1, ...Object.values(metrics.knowledgeBySource));
+    const pilotSinceLabel = metrics.pilotSince ? new Date(metrics.pilotSince).toLocaleDateString('pt-BR') : 'Ainda sem equipe cadastrada';
+
+    const StatCard = ({ icon, color, label, value, sub }) => (
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${color}`}>{icon}</div>
+            <p className="text-3xl font-black text-slate-800 leading-none">{value}</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{label}</p>
+            {sub && <p className="text-xs text-slate-500 font-medium mt-1">{sub}</p>}
+        </div>
+    );
+
+    return (
+        <div className="animate-fade-in space-y-6">
+            <div className="bg-teal-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500 rounded-full mix-blend-overlay filter blur-3xl opacity-20 -mr-10 -mt-10"></div>
+                <div className="relative z-10">
+                    <h2 className="text-3xl font-black tracking-tight flex items-center gap-3"><TrendingUp size={32} className="text-teal-300"/> Indicadores de Gestão do Conhecimento</h2>
+                    <p className="text-teal-200 mt-2 font-medium max-w-xl">Equipe cadastrada desde {pilotSinceLabel}.</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard icon={<User size={22} className="text-white"/>} color="bg-slate-800" label="Técnicos Ativos" value={metrics.activeAuthors} sub={`${metrics.usersTotal} contas cadastradas`} />
+                <StatCard icon={<AlertTriangle size={22} className="text-white"/>} color="bg-rose-500" label="Pendências Registradas" value={metrics.pendingsTotal} />
+                <StatCard icon={<FileText size={22} className="text-white"/>} color="bg-blue-500" label="Processos Registrados" value={metrics.entriesTotal} />
+                <StatCard icon={<Sparkles size={22} className="text-white"/>} color="bg-purple-600" label="Base de Conhecimento" value={metrics.knowledgeTotal} sub="entradas totais" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-1 flex items-center gap-2"><Sparkles size={16} className="text-purple-600"/> Transformar em Padrão</h3>
+                    <p className="text-xs text-slate-400 font-medium mb-6">Quantas pendências resolvidas viraram conhecimento reaproveitável.</p>
+                    <div className="flex items-end gap-3 mb-2">
+                        <span className="text-4xl font-black text-purple-600">{promotionRate}%</span>
+                        <span className="text-xs text-slate-400 font-bold mb-1">{metrics.pendingsPromoted} de {concludedOrClosed} pendências concluídas</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${promotionRate}%` }}></div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-indigo-600"/> Consultor IA — Taxa de Resposta</h3>
+                    <p className="text-xs text-slate-400 font-medium mb-6">Perguntas feitas que encontraram algo relevante na base.</p>
+                    <div className="flex items-end gap-3 mb-2">
+                        <span className="text-4xl font-black text-indigo-600">{hitRate}%</span>
+                        <span className="text-xs text-slate-400 font-bold mb-1">{metrics.assistantQueriesWithHits} de {metrics.assistantQueriesTotal} perguntas</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${hitRate}%` }}></div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-1">De onde vem o conhecimento registrado</h3>
+                <p className="text-xs text-slate-400 font-medium mb-6">Origem de cada entrada da base usada pelo Consultor IA.</p>
+                <div className="space-y-4">
+                    {Object.entries(SOURCE_LABELS).map(([key, label]) => {
+                        const count = metrics.knowledgeBySource[key] || 0;
+                        return (
+                            <div key={key}>
+                                <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>{label}</span><span>{count}</span></div>
+                                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${SOURCE_COLORS[key]}`} style={{ width: `${(count / knowledgeMax) * 100}%` }}></div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Pendências por status</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                    {PENDING_STATUS_FLOW.map(status => (
+                        <div key={status} className={`p-4 rounded-2xl border text-center ${STATUS_COLORS[status]}`}>
+                            <p className="text-2xl font-black">{metrics.pendingsByStatus[status] || 0}</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest mt-1">{status}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

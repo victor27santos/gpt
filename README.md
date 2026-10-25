@@ -154,6 +154,19 @@ Padrão" depois). Hoje isso ainda não tem uma etapa de aprovação separada pel
 coordenação — qualquer entrada criada (por Processo, Consultor ou pendência
 promovida) já entra direto na base que a IA usa.
 
+### Indicadores (aba "Indicadores", só Coordenação)
+
+Painel com números reais extraídos do banco, pensado para medir se a gestão
+de conhecimento da equipe está evoluindo com o uso do sistema — útil para
+acompanhamento de um piloto com a equipe: técnicos ativos, pendências por
+status, % de pendências concluídas que viraram padrão de conhecimento,
+origem de cada entrada da base (Processo / Consultor IA / Pendência
+promovida) e a taxa de perguntas ao Consultor IA que encontraram algo
+relevante na base. Cada pergunta feita ao Consultor é registrada (pergunta,
+autor, se achou contexto) na tabela `assistant_queries`, mesmo quando a IA
+não está configurada — o que importa para essa métrica é se a busca na base
+achou algo, não se a IA respondeu.
+
 ### Rotas da API
 
 | Recurso | Rotas |
@@ -168,6 +181,7 @@ promovida) já entra direto na base que a IA usa.
 | Upload de mídia | `POST /api/uploads` (multipart, até 25MB, extensões de imagem/vídeo/áudio/pdf) — retorna a URL pública do Supabase Storage |
 | IA | `POST /api/melhorar_relato`, `POST /api/salvar_conhecimento`, `POST /api/perguntar_assistente`, `GET /api/emails` |
 | Diagnóstico | `GET /api/health` |
+| Indicadores | `GET /api/metrics` (só para o perfil Coordenação) |
 
 Todas as rotas acima, exceto `/api/auth/*` e `/api/health`, exigem o header
 `Authorization: Bearer <token>` obtido no login/registro.

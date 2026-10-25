@@ -217,6 +217,13 @@ CREATE TABLE IF NOT EXISTS users (
     role_id TEXT NOT NULL,
     created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS assistant_queries (
+    id SERIAL PRIMARY KEY,
+    question TEXT NOT NULL,
+    author TEXT,
+    context_hits INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT
+);
 """
 
 
@@ -225,6 +232,7 @@ CREATE TABLE IF NOT EXISTS users (
 # safe to run every startup (IF NOT EXISTS / IF EXISTS guards).
 MIGRATIONS = [
     "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS promoted_to_knowledge INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'processo'",
 ]
 
 
@@ -482,8 +490,8 @@ def promote_pending_to_knowledge(pending_id, entry):
         conn.close()
         return {"ok": False, "reason": "already_promoted"}
     conn.execute(
-        """INSERT INTO knowledge (title, equipment, description, solution, category, author, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO knowledge (title, equipment, description, solution, category, author, created_at, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'pendencia')""",
         (
             entry.get("title"),
             entry.get("equipment"),
@@ -900,8 +908,8 @@ def delete_library_doc(doc_id):
 def save_knowledge(entry):
     conn = get_conn()
     cur = conn.execute(
-        """INSERT INTO knowledge (title, equipment, description, solution, category, author, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO knowledge (title, equipment, description, solution, category, author, created_at, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             entry.get("title"),
             entry.get("equipment"),
@@ -910,12 +918,75 @@ def save_knowledge(entry):
             entry.get("category"),
             entry.get("author"),
             entry.get("date") or datetime.now(timezone.utc).isoformat(),
+            entry.get("source", "processo"),
         ),
     )
     conn.commit()
     row_id = cur.lastrowid
     conn.close()
     return row_id
+
+
+def log_assistant_query(question, author, context_hits):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO assistant_queries (question, author, context_hits, created_at) VALUES (?, ?, ?, ?)",
+        (question, author, context_hits, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_metrics():
+    conn = get_conn()
+
+    pendings_total = conn.execute("SELECT COUNT(*) AS c FROM pendings").fetchone()["c"]
+    pendings_by_status = conn.execute(
+        "SELECT status, COUNT(*) AS c FROM pendings GROUP BY status"
+    ).fetchall()
+    pendings_promoted = conn.execute(
+        "SELECT COUNT(*) AS c FROM pendings WHERE promoted_to_knowledge = 1"
+    ).fetchone()["c"]
+
+    knowledge_total = conn.execute("SELECT COUNT(*) AS c FROM knowledge").fetchone()["c"]
+    knowledge_by_source = conn.execute(
+        "SELECT COALESCE(source, 'processo') AS source, COUNT(*) AS c FROM knowledge GROUP BY source"
+    ).fetchall()
+
+    entries_total = conn.execute("SELECT COUNT(*) AS c FROM entries").fetchone()["c"]
+
+    queries_total = conn.execute("SELECT COUNT(*) AS c FROM assistant_queries").fetchone()["c"]
+    queries_with_hits = conn.execute(
+        "SELECT COUNT(*) AS c FROM assistant_queries WHERE context_hits > 0"
+    ).fetchone()["c"]
+
+    users_total = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    active_authors = conn.execute(
+        """SELECT COUNT(DISTINCT author) AS c FROM (
+               SELECT author FROM pendings WHERE author IS NOT NULL
+               UNION
+               SELECT author FROM entries WHERE author IS NOT NULL
+               UNION
+               SELECT author FROM knowledge WHERE author IS NOT NULL
+           ) t"""
+    ).fetchone()["c"]
+
+    pilot_since = conn.execute("SELECT MIN(created_at) AS d FROM users").fetchone()["d"]
+
+    conn.close()
+    return {
+        "pendingsTotal": pendings_total,
+        "pendingsByStatus": {r["status"]: r["c"] for r in pendings_by_status},
+        "pendingsPromoted": pendings_promoted,
+        "knowledgeTotal": knowledge_total,
+        "knowledgeBySource": {r["source"]: r["c"] for r in knowledge_by_source},
+        "entriesTotal": entries_total,
+        "assistantQueriesTotal": queries_total,
+        "assistantQueriesWithHits": queries_with_hits,
+        "usersTotal": users_total,
+        "activeAuthors": active_authors,
+        "pilotSince": pilot_since,
+    }
 
 
 def search_knowledge(query, limit=5):

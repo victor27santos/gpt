@@ -73,6 +73,7 @@ def perguntar_assistente():
         f"- {c['title']} ({c['equipment']}): {c['description']} | Solução: {c['solution']}"
         for c in contexto
     ) or "Nenhum registro relacionado encontrado na base de conhecimento."
+    db.log_assistant_query(pergunta, g.current_user["name"], len(contexto))
 
     try:
         resposta = llm.ask_text(

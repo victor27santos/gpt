@@ -112,4 +112,7 @@ export const api = {
     perguntarAssistente: (pergunta) => request('/api/perguntar_assistente', { method: 'POST', body: { pergunta } }),
     emails: () => request('/api/emails'),
   },
+  metrics: {
+    get: () => request('/api/metrics'),
+  },
 };
