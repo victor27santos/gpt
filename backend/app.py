@@ -28,6 +28,7 @@ from routes.auth import bp as auth_bp
 from routes.entries import bp as entries_bp
 from routes.events import bp as events_bp
 from routes.fichas import bp as fichas_bp
+from routes.inteligencia import bp as inteligencia_bp
 from routes.library import bp as library_bp
 from routes.metrics import bp as metrics_bp
 from routes.sectors import bp as sectors_bp
@@ -39,7 +40,7 @@ CORS(app)
 
 db.init_db()
 
-for blueprint in (auth_bp, ai_bp, sectors_bp, fichas_bp, entries_bp, events_bp, library_bp, uploads_bp, metrics_bp):
+for blueprint in (auth_bp, ai_bp, sectors_bp, fichas_bp, entries_bp, events_bp, library_bp, uploads_bp, metrics_bp, inteligencia_bp):
     app.register_blueprint(blueprint)
 
 
