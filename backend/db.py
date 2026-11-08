@@ -82,6 +82,20 @@ def _today():
     return datetime.now(timezone.utc).strftime("%d/%m/%Y")
 
 
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _int_or_none(value):
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+CLOSED_STATUSES = ("Concluído", "Encerrado")
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sectors (
     seq SERIAL,
@@ -233,6 +247,13 @@ CREATE TABLE IF NOT EXISTS assistant_queries (
 MIGRATIONS = [
     "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS promoted_to_knowledge INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'processo'",
+    # Módulo de inteligência (priorização por risco, reincidência, indicadores)
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS classe_risco TEXT",
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS tem_reserva INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS ficha_id INTEGER",
+    "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS parado INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS opened_at TEXT",
+    "ALTER TABLE pendings ADD COLUMN IF NOT EXISTS closed_at TEXT",
 ]
 
 
@@ -383,6 +404,10 @@ def _serialize_pending(row, updates):
         "lastEditor": row["last_editor"],
         "lastEditDate": row["last_edit_date"],
         "promotedToKnowledge": bool(row["promoted_to_knowledge"]),
+        "fichaId": row.get("ficha_id"),
+        "parado": bool(row.get("parado")),
+        "openedAt": row.get("opened_at"),
+        "closedAt": row.get("closed_at"),
         "updates": [
             {"id": u["id"], "text": u["text"], "author": u["author"], "date": u["date"]}
             for u in updates
@@ -418,8 +443,9 @@ def create_pending(sector_id, data):
         return None
     date = data.get("date") or _today()
     cur = conn.execute(
-        """INSERT INTO pendings (sector_id, sub_sector_id, type, description, reason, status, author, date)
-           VALUES (?, ?, ?, ?, ?, 'Aberto', ?, ?)""",
+        """INSERT INTO pendings (sector_id, sub_sector_id, type, description, reason, status, author, date,
+           ficha_id, parado, opened_at)
+           VALUES (?, ?, ?, ?, ?, 'Aberto', ?, ?, ?, ?, ?)""",
         (
             sector_id,
             data.get("subSectorId"),
@@ -428,6 +454,9 @@ def create_pending(sector_id, data):
             data.get("reason"),
             data.get("author"),
             date,
+            _int_or_none(data.get("fichaId")),
+            1 if data.get("parado") else 0,
+            _now_iso(),
         ),
     )
     conn.commit()
@@ -443,9 +472,15 @@ def update_pending_status(pending_id, status, author):
         conn.close()
         return None
     edit_date = _today()
+    # closed_at marca o fim do atendimento (base do MTTR). Volta a NULL se a
+    # pendência for reaberta; só é gravado na primeira vez que fecha.
+    if status in CLOSED_STATUSES:
+        closed_at = row.get("closed_at") or _now_iso()
+    else:
+        closed_at = None
     conn.execute(
-        "UPDATE pendings SET status = ?, last_editor = ?, last_edit_date = ? WHERE id = ?",
-        (status, author, edit_date, pending_id),
+        "UPDATE pendings SET status = ?, last_editor = ?, last_edit_date = ?, closed_at = ? WHERE id = ?",
+        (status, author, edit_date, closed_at, pending_id),
     )
     conn.execute(
         "INSERT INTO pending_updates (pending_id, text, author, date) VALUES (?, ?, ?, ?)",
@@ -563,6 +598,8 @@ def _serialize_ficha(row, custom_fields):
         "proxCalib": row["prox_calib"],
         "status": row["status"],
         "especificacoes": row["especificacoes"],
+        "classeRisco": row.get("classe_risco"),
+        "temReserva": bool(row.get("tem_reserva")),
         "customFields": [{"key": c["key"], "value": c["value"]} for c in custom_fields],
     }
 
@@ -584,8 +621,8 @@ def create_ficha(data):
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO fichas (equipamento, fabricante, modelo, patrimonio, setor, instalacao,
-           ultima_calib, prox_calib, status, especificacoes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           ultima_calib, prox_calib, status, especificacoes, classe_risco, tem_reserva)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.get("equipamento"),
             data.get("fabricante"),
@@ -597,6 +634,8 @@ def create_ficha(data):
             data.get("proxCalib"),
             data.get("status", "Ativo"),
             data.get("especificacoes"),
+            data.get("classeRisco") or None,
+            1 if data.get("temReserva") else 0,
         ),
     )
     ficha_id = cur.lastrowid
@@ -622,7 +661,8 @@ def update_ficha(ficha_id, data):
         return None
     conn.execute(
         """UPDATE fichas SET equipamento = ?, fabricante = ?, modelo = ?, patrimonio = ?, setor = ?,
-           instalacao = ?, ultima_calib = ?, prox_calib = ?, status = ?, especificacoes = ? WHERE id = ?""",
+           instalacao = ?, ultima_calib = ?, prox_calib = ?, status = ?, especificacoes = ?,
+           classe_risco = ?, tem_reserva = ? WHERE id = ?""",
         (
             data.get("equipamento", row["equipamento"]),
             data.get("fabricante", row["fabricante"]),
@@ -634,6 +674,8 @@ def update_ficha(ficha_id, data):
             data.get("proxCalib", row["prox_calib"]),
             data.get("status", row["status"]),
             data.get("especificacoes", row["especificacoes"]),
+            data.get("classeRisco", row.get("classe_risco")) or None,
+            (1 if data["temReserva"] else 0) if "temReserva" in data else (row.get("tem_reserva") or 0),
             ficha_id,
         ),
     )
@@ -1085,3 +1127,14 @@ def ping():
     conn = get_conn()
     conn.execute("SELECT 1")
     conn.close()
+
+
+def get_intelligence_inputs():
+    """Dados crus para o módulo de inteligência: fichas, pendências e setores."""
+    conn = get_conn()
+    fichas = conn.execute("SELECT * FROM fichas ORDER BY id ASC").fetchall()
+    pendings = conn.execute("SELECT * FROM pendings ORDER BY id ASC").fetchall()
+    sectors = conn.execute("SELECT * FROM sectors ORDER BY seq ASC").fetchall()
+    subs = conn.execute("SELECT * FROM sub_sectors").fetchall()
+    conn.close()
+    return [dict(f) for f in fichas], [dict(p) for p in pendings], [dict(s) for s in sectors], [dict(s) for s in subs]

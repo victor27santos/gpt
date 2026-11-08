@@ -17,6 +17,8 @@ const LOGIN_PROFILES = [
   { id: 'plantonista', name: 'Técnicos Plantonistas 12x36', role: 'Manutenção de Emergência', canAddImprovements: true, canEditStatus: true, canEditSectorDetails: false, canViewMetrics: false }
 ];
 
+const CLASSES_RISCO = ['Suporte à vida', 'Monitorização', 'Terapêutico', 'Diagnóstico', 'Apoio'];
+
 const PENDING_STATUS_FLOW = ['Aberto', 'Em atendimento', 'Aguardando peça', 'Concluído', 'Encerrado'];
 const STATUS_COLORS = { 'Aberto': 'bg-rose-100 text-rose-700 border-rose-200', 'Em atendimento': 'bg-blue-100 text-blue-700 border-blue-200', 'Aguardando peça': 'bg-amber-100 text-amber-700 border-amber-200', 'Concluído': 'bg-emerald-100 text-emerald-700 border-emerald-200', 'Encerrado': 'bg-slate-200 text-slate-600 border-slate-300' };
 
@@ -235,6 +237,7 @@ export default function App() {
 
           <nav className="hidden md:flex bg-slate-100/50 p-1.5 rounded-2xl items-center backdrop-blur-sm overflow-x-auto no-scrollbar">
             <NavBtn active={view === 'sectors'} onClick={() => setView('sectors')} label="Setores" icon={<Building size={18}/>} />
+            <NavBtn active={view === 'prioridades'} onClick={() => setView('prioridades')} label="Prioridades" icon={<Zap size={18} className={view === 'prioridades' ? "text-rose-600" : ""}/>} />
             <NavBtn active={view === 'list'} onClick={() => setView('list')} label="Processos" icon={<FileText size={18}/>} />
             <div className="w-px h-6 bg-slate-200 mx-1"></div>
             <NavBtn active={view === 'fichas'} onClick={() => setView('fichas')} label="Fichas" icon={<ClipboardList size={18} className={view === 'fichas' ? "text-amber-600" : ""}/>} />
@@ -259,9 +262,10 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow">
-        {view === 'sectors' && <SectorsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} onAddEvent={handleAddEvent} />}
+        {view === 'sectors' && <SectorsView fichas={fichas} sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} onAddEvent={handleAddEvent} />}
         {view === 'list' && <HistoryView entries={entries} onAddClick={() => { setEditingEntry(null); setView('form'); }} onItemClick={e => { setSelectedEntry(e); setView('detail'); }} onEditClick={handleEditClick} onDeleteClick={handleDeleteEntry} />}
         {view === 'fichas' && <FichasView fichas={fichas} setFichas={setFichas} sectors={sectors} user={user} />}
+        {view === 'prioridades' && <PrioridadesView user={user} />}
         {view === 'library' && <LibraryView sectors={sectors} user={user} />}
         {view === 'calendar' && <CalendarView events={events} onAddEvent={handleAddEvent} onUpdateEvent={handleUpdateEvent} onDeleteEvent={handleDeleteEvent} techs={LOGIN_PROFILES} />}
         {view === 'improvements' && <ImprovementsView sectors={sectors} onUpdateSector={s => setSectors(sectors.map(sec => sec.id === s.id ? s : sec))} user={user} />}
@@ -274,6 +278,7 @@ export default function App() {
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 flex justify-start overflow-x-auto no-scrollbar p-3 shadow-2xl z-40 pb-safe gap-6 px-6">
           <MobileBtn active={view === 'sectors'} onClick={() => setView('sectors')} icon={<Building size={24}/>} label="Setores" />
+          <MobileBtn active={view === 'prioridades'} onClick={() => setView('prioridades')} icon={<Zap size={24} className={view === 'prioridades' ? 'text-rose-600' : ''}/>} label="Prioridade" />
           <MobileBtn active={view === 'fichas'} onClick={() => setView('fichas')} icon={<ClipboardList size={24} className={view === 'fichas' ? 'text-amber-600' : ''}/>} label="Fichas" />
           <MobileBtn active={view === 'library'} onClick={() => setView('library')} icon={<BookOpen size={24} className={view === 'library' ? 'text-emerald-600' : ''}/>} label="Biblioteca" />
           <MobileBtn active={view === 'emails'} onClick={() => setView('emails')} icon={<Bot size={24}/>} label="Agente" />
@@ -295,7 +300,7 @@ function FichasView({ fichas, setFichas, sectors, user }) {
     const [selectedFicha, setSelectedFicha] = useState(null);
     const [editingFichaId, setEditingFichaId] = useState(null);
 
-    const emptyFormData = { equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', customFields: [] };
+    const emptyFormData = { equipamento: '', fabricante: '', modelo: '', patrimonio: '', setor: sectors[0]?.name || '', instalacao: '', ultimaCalib: '', proxCalib: '', status: 'Ativo', especificacoes: '', classeRisco: '', temReserva: false, customFields: [] };
     const [formData, setFormData] = useState(emptyFormData);
 
     const filteredFichas = fichas.filter(f =>
@@ -325,7 +330,7 @@ function FichasView({ fichas, setFichas, sectors, user }) {
             equipamento: ficha.equipamento || '', fabricante: ficha.fabricante || '', modelo: ficha.modelo || '',
             patrimonio: ficha.patrimonio || '', setor: ficha.setor || sectors[0]?.name || '', instalacao: ficha.instalacao || '',
             ultimaCalib: ficha.ultimaCalib || '', proxCalib: ficha.proxCalib || '', status: ficha.status || 'Ativo',
-            especificacoes: ficha.especificacoes || '', customFields: ficha.customFields ? ficha.customFields.map(f => ({ ...f })) : [],
+            especificacoes: ficha.especificacoes || '', classeRisco: ficha.classeRisco || '', temReserva: !!ficha.temReserva, customFields: ficha.customFields ? ficha.customFields.map(f => ({ ...f })) : [],
         });
         setEditingFichaId(ficha.id);
         setSelectedFicha(null);
@@ -420,6 +425,8 @@ function FichasView({ fichas, setFichas, sectors, user }) {
                                 <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Modelo</label><input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400" value={formData.modelo} onChange={e=>setFormData({...formData, modelo: e.target.value})}/></div>
                                 <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Última Calibração</label><input type="date" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400" value={formData.ultimaCalib} onChange={e=>setFormData({...formData, ultimaCalib: e.target.value})}/></div>
                                 <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Próxima Calibração</label><input type="date" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400" value={formData.proxCalib} onChange={e=>setFormData({...formData, proxCalib: e.target.value})}/></div>
+                                <div><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Classe de Risco (priorização)</label><select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400" value={formData.classeRisco} onChange={e=>setFormData({...formData, classeRisco: e.target.value})}><option value="">Não informada</option>{CLASSES_RISCO.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                <label className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 cursor-pointer self-end"><input type="checkbox" checked={!!formData.temReserva} onChange={e=>setFormData({...formData, temReserva: e.target.checked})}/> Existe equipamento reserva</label>
                             </div>
 
                             <div>
@@ -1732,12 +1739,12 @@ function MetricsView() {
     );
 }
 
-function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
+function SectorsView({ sectors, onUpdateSector, user, onAddEvent, fichas = [] }) {
   const [selectedId, setSelectedId] = useState(sectors[0].id);
   const [tab, setTab] = useState('pendings');
   const [subId, setSubId] = useState(null);
   const [showAddPending, setShowAddPending] = useState(false);
-  const [newPendingData, setNewPendingData] = useState({ id: null, description: '', reason: '', type: 'Corretiva' });
+  const [newPendingData, setNewPendingData] = useState({ id: null, description: '', reason: '', type: 'Corretiva', fichaId: '', parado: false });
   const [selectedPending, setSelectedPending] = useState(null);
   const [updateText, setUpdateText] = useState('');
   const [promoteDraft, setPromoteDraft] = useState(null);
@@ -1756,10 +1763,13 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
               reason: newPendingData.reason,
               author: user.name,
               subSectorId: subId,
+              fichaId: newPendingData.fichaId || null,
+              parado: newPendingData.parado,
           });
           onUpdateSector({ ...current, pendings: [...current.pendings, created] });
           if (onAddEvent) { onAddEvent({ title: `[PENDÊNCIA] ${newPendingData.description}`, date: new Date().toISOString().split('T')[0], assignedTo: user.name, priority: 'normal', description: newPendingData.reason }); }
           setShowAddPending(false);
+          setNewPendingData({ id: null, description: '', reason: '', type: 'Corretiva', fichaId: '', parado: false });
       } catch (err) {
           alert(`Erro ao criar pendência: ${err.message}`);
       }
@@ -1865,7 +1875,7 @@ function SectorsView({ sectors, onUpdateSector, user, onAddEvent }) {
           </div>
 
           {showAddPending && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 space-y-6"><div className="flex justify-between items-center"><h3 className="text-xl font-black text-rose-600 flex items-center gap-2"><AlertTriangle size={24}/> Nova Pendência</h3><button onClick={() => setShowAddPending(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button></div><div className="space-y-4"><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Equipamento / Falha</label><input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.description} onChange={e => setNewPendingData({...newPendingData, description: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Motivo / Detalhes</label><textarea rows={3} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-sm outline-none focus:ring-2 focus:ring-rose-400 resize-none" value={newPendingData.reason} onChange={e => setNewPendingData({...newPendingData, reason: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Tipo de Serviço</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.type} onChange={e => setNewPendingData({...newPendingData, type: e.target.value})}><option>Corretiva</option><option>Preventiva</option></select></div></div><button onClick={handleSavePending} className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-lg hover:bg-rose-700 transition-all uppercase tracking-widest text-xs">Confirmar</button></div></div>
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl p-8 space-y-6"><div className="flex justify-between items-center"><h3 className="text-xl font-black text-rose-600 flex items-center gap-2"><AlertTriangle size={24}/> Nova Pendência</h3><button onClick={() => setShowAddPending(false)} className="p-2 hover:bg-slate-100 rounded-full"><X size={20}/></button></div><div className="space-y-4"><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Equipamento / Falha</label><input className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.description} onChange={e => setNewPendingData({...newPendingData, description: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Motivo / Detalhes</label><textarea rows={3} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-sm outline-none focus:ring-2 focus:ring-rose-400 resize-none" value={newPendingData.reason} onChange={e => setNewPendingData({...newPendingData, reason: e.target.value})}/></div><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Equipamento (ficha)</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.fichaId} onChange={e => setNewPendingData({...newPendingData, fichaId: e.target.value})}><option value="">Sem vínculo com ficha</option>{fichas.map(f => <option key={f.id} value={f.id}>{f.equipamento} · Pat. {f.patrimonio || 's/n'} ({f.setor})</option>)}</select><p className="text-[10px] text-slate-400 mt-1 ml-2">Vincular permite priorizar por risco e detectar reincidência.</p></div><label className="flex items-center gap-2 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 cursor-pointer"><input type="checkbox" checked={newPendingData.parado} onChange={e => setNewPendingData({...newPendingData, parado: e.target.checked})}/> Equipamento parado (fora de uso)</label><div><label className="block text-[10px] font-black uppercase text-slate-400 mb-1 ml-2">Tipo de Serviço</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-rose-400" value={newPendingData.type} onChange={e => setNewPendingData({...newPendingData, type: e.target.value})}><option>Corretiva</option><option>Preventiva</option></select></div></div><button onClick={handleSavePending} className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-lg hover:bg-rose-700 transition-all uppercase tracking-widest text-xs">Confirmar</button></div></div>
           )}
           {selectedPending && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"><div className="p-8 bg-slate-50 border-b border-slate-200 flex justify-between items-start"><div><div className="flex gap-2 mb-2"><span className="bg-slate-200 text-slate-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">ID #{selectedPending.id}</span><span className="bg-white border text-slate-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">{selectedPending.date}</span></div><h2 className="text-2xl font-black text-slate-800 leading-tight">{selectedPending.description}</h2></div><button onClick={() => setSelectedPending(null)} className="p-2 hover:bg-slate-200 rounded-full"><X size={24} className="text-slate-400"/></button></div><div className="flex-grow overflow-y-auto p-8 space-y-8"><div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100"><h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">Status do Atendimento</h4><div className="flex flex-wrap gap-2">{PENDING_STATUS_FLOW.map(status => (<button key={status} onClick={() => handleStatusChange(selectedPending.id, status)} className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all border ${selectedPending.status === status ? `${STATUS_COLORS[status]} shadow-md scale-105` : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}>{status}</button>))}</div></div>
@@ -1982,6 +1992,249 @@ function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent, techs 
 
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl p-8 space-y-4"><h3 className="text-xl font-bold text-slate-800">{editingEventId ? 'Editar Agendamento' : 'Novo Agendamento'}</h3><input className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" placeholder="Título da Atividade" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} /><div className="grid grid-cols-2 gap-4"><input type="date" className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} /><select className="p-3 bg-slate-50 border rounded-xl outline-none" value={newEvent.assignedTo} onChange={e => setNewEvent({...newEvent, assignedTo: e.target.value})}>{techs.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></div><select className="w-full p-3 bg-slate-50 border rounded-xl outline-none font-bold" value={newEvent.priority} onChange={e => setNewEvent({...newEvent, priority: e.target.value})}><option value="normal">Prioridade Normal</option><option value="alta">Prioridade Alta</option></select><textarea rows={3} className="w-full p-3 bg-slate-50 border rounded-xl outline-none resize-none" placeholder="Descrição (opcional)" value={newEvent.description} onChange={e => setNewEvent({...newEvent, description: e.target.value})} /><div className="flex gap-2 pt-2"><button onClick={closeModal} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button><button onClick={handleSave} disabled={!newEvent.title.trim() || !newEvent.date} className="flex-1 py-3 bg-blue-600 disabled:opacity-40 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">Salvar</button></div></div></div>
+            )}
+        </div>
+    );
+}
+
+// ============================================================================
+// PRIORIDADES — módulo de inteligência (fila por risco, alertas, indicadores,
+// passagem de plantão). A lógica de pontuação fica em backend/inteligencia.py.
+// ============================================================================
+const FAIXA_STYLES = {
+    'Crítica': { bar: 'border-l-rose-600', text: 'text-rose-600', chip: 'bg-rose-100 text-rose-700 border-rose-200' },
+    'Alta': { bar: 'border-l-amber-500', text: 'text-amber-600', chip: 'bg-amber-100 text-amber-700 border-amber-200' },
+    'Média': { bar: 'border-l-blue-500', text: 'text-blue-600', chip: 'bg-blue-100 text-blue-700 border-blue-200' },
+    'Baixa': { bar: 'border-l-slate-400', text: 'text-slate-500', chip: 'bg-slate-100 text-slate-600 border-slate-200' },
+};
+
+function fmtHoras(h) {
+    if (h == null) return '—';
+    if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`;
+    if (h < 48) return `${Math.round(h)} h`;
+    return `${Math.round(h / 24)} dias`;
+}
+
+function fmtDataISO(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+}
+
+function PrioridadesView({ user }) {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [tab, setTab] = useState('fila');
+    const [expanded, setExpanded] = useState(null);
+    const [turno, setTurno] = useState(() => { const h = new Date().getHours(); return h >= 6 && h < 18 ? 'Diurno (6h–18h)' : 'Noturno (18h–6h)'; });
+    const [obs, setObs] = useState('');
+    const [copied, setCopied] = useState('');
+
+    const load = async () => {
+        setLoading(true); setError(null);
+        try { setData(await api.inteligencia.get()); }
+        catch (err) { setError(err.message); }
+        finally { setLoading(false); }
+    };
+    useEffect(() => { load(); }, []);
+
+    const handoff = useMemo(() => {
+        if (!data) return '';
+        const now = new Date();
+        const fila = data.fila;
+        const prioritarias = fila.filter(x => x.score >= 50);
+        const demais = fila.filter(x => x.score < 50);
+        const semReserva = fila.filter(x => x.parado && x.ficha && !x.ficha.temReserva);
+        const nome = x => x.ficha ? `${x.ficha.equipamento} (Pat. ${x.ficha.patrimonio || 's/n'})` : x.description;
+        let t = `PASSAGEM DE PLANTÃO · ENGENHARIA CLÍNICA\n${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Turno ${turno}\n\n`;
+        t += `RESUMO: ${fila.length} pendência(s) aberta(s) · ${prioritarias.length} de prioridade alta/crítica · ${semReserva.length} equipamento(s) parado(s) sem reserva\n`;
+        if (prioritarias.length) {
+            t += `\nPRIORIDADES PARA O PRÓXIMO TURNO\n`;
+            prioritarias.forEach((x, i) => {
+                t += `${i + 1}. [${x.score} · ${x.faixa}] ${nome(x)} – ${x.setor}\n   ${x.description}${x.reason ? `: ${x.reason}` : ''}. Status: ${x.status}. Aberta há ${fmtHoras(x.horasAberta)}${x.parado ? ', PARADO' : ''}${x.ficha && !x.ficha.temReserva ? ', sem reserva' : ''}.\n`;
+            });
+        }
+        if (demais.length) {
+            t += `\nDEMAIS PENDÊNCIAS ABERTAS\n`;
+            demais.forEach(x => { t += `- ${nome(x)} (${x.setor}): ${x.description} · ${x.status}\n`; });
+        }
+        if (data.reincidencias.length) {
+            t += `\nATENÇÃO · REINCIDÊNCIA (≥2 corretivas em ${data.parametros.janelaReincidenciaDias} dias)\n`;
+            data.reincidencias.forEach(r => { t += `- ${r.ficha.equipamento} (Pat. ${r.ficha.patrimonio || 's/n'}): ${r.total} ocorrências. Avaliar causa raiz antes de liberar.\n`; });
+        }
+        if (data.prazos.length) {
+            t += `\nPRAZOS DE CALIBRAÇÃO\n`;
+            data.prazos.forEach(p => { t += `- ${p.ficha.equipamento} (Pat. ${p.ficha.patrimonio || 's/n'}): ${p.dias < 0 ? `VENCIDA há ${-p.dias} dia(s)` : p.dias === 0 ? 'vence hoje' : `vence em ${p.dias} dia(s)`}\n`; });
+        }
+        if (obs.trim()) t += `\nOBSERVAÇÕES\n${obs.trim()}\n`;
+        t += `\nResponsável: ${user?.name || '__________'}   Recebido por: __________`;
+        return t;
+    }, [data, turno, obs, user]);
+
+    const copyHandoff = async () => {
+        try { await navigator.clipboard.writeText(handoff); setCopied('Copiado.'); }
+        catch { setCopied('Não foi possível copiar. Selecione o texto e use Ctrl+C.'); }
+        setTimeout(() => setCopied(''), 3000);
+    };
+
+    if (loading && !data) {
+        return (<div className="p-20 text-center text-slate-400 flex flex-col items-center"><Loader2 size={40} className="animate-spin mb-4"/><p className="font-bold text-sm uppercase tracking-widest">Calculando prioridades...</p></div>);
+    }
+    if (error) {
+        return (<div className="p-10 text-center border-2 border-dashed border-rose-200 bg-rose-50 rounded-[32px] text-rose-500 font-bold"><CloudOff size={48} className="mx-auto mb-4 opacity-50"/>{error}<div className="mt-4"><button onClick={load} className="px-4 py-2 bg-white border border-rose-200 rounded-xl text-xs uppercase tracking-widest">Tentar de novo</button></div></div>);
+    }
+
+    const fila = data.fila;
+    const criticas = fila.filter(x => x.faixa === 'Crítica').length;
+    const altas = fila.filter(x => x.faixa === 'Alta').length;
+    const paradosSemReserva = fila.filter(x => x.parado && x.ficha && !x.ficha.temReserva).length;
+    const vencidas = data.prazos.filter(p => p.dias < 0).length;
+    const alertCount = data.reincidencias.length + vencidas;
+
+    const TabBtn = ({ id, label, badge }) => (
+        <button onClick={() => setTab(id)} className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${tab === id ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>
+            {label}{badge > 0 && <span className="ml-2 bg-rose-600 text-white rounded-full px-2 py-0.5 text-[9px]">{badge}</span>}
+        </button>
+    );
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-wrap justify-between items-end gap-4">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><Zap className="text-rose-600"/> Prioridades</h2>
+                    <p className="text-sm text-slate-500 font-medium max-w-2xl">Apoio à decisão para o plantão. A pontuação sugere a ordem de atendimento; a decisão final é sempre do técnico.</p>
+                </div>
+                <button onClick={load} className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[11px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 flex items-center gap-2"><RefreshCw size={14} className={loading ? 'animate-spin' : ''}/> Atualizar</button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[['Críticas', criticas, 'text-rose-600'], ['Alta prioridade', altas, 'text-amber-600'], ['Pendências abertas', fila.length, 'text-slate-800'], ['Parados sem reserva', paradosSemReserva, 'text-slate-800']].map(([l, v, c]) => (
+                    <div key={l} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><p className={`text-3xl font-black leading-none ${c}`}>{v}</p><p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">{l}</p></div>
+                ))}
+            </div>
+
+            {data.pendenciasSemEquipamento > 0 && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-sm text-amber-800 font-medium flex gap-2 items-start"><AlertTriangle size={18} className="shrink-0 mt-0.5"/> {data.pendenciasSemEquipamento} pendência(s) aberta(s) sem equipamento vinculado. Elas entram na fila com classe padrão; vincule a ficha para a pontuação ficar precisa.</div>
+            )}
+
+            <div className="flex gap-2 overflow-x-auto pb-1">
+                <TabBtn id="fila" label="Fila por risco"/>
+                <TabBtn id="alertas" label="Alertas" badge={alertCount}/>
+                <TabBtn id="indicadores" label="Indicadores"/>
+                <TabBtn id="plantao" label="Passagem de plantão"/>
+            </div>
+
+            {tab === 'fila' && (
+                <div className="space-y-3">
+                    {fila.length === 0 && <div className="p-10 text-center text-slate-400 font-bold bg-white rounded-3xl border border-dashed border-slate-200">Nenhuma pendência aberta.</div>}
+                    {fila.map(x => {
+                        const st = FAIXA_STYLES[x.faixa];
+                        return (
+                            <div key={x.id} className={`bg-white rounded-2xl border border-slate-200 border-l-8 ${st.bar} shadow-sm p-4`}>
+                                <div className="flex gap-4 items-start">
+                                    <div className="text-center w-16 shrink-0"><p className={`text-3xl font-black leading-none ${st.text}`}>{x.score}</p><p className={`text-[9px] font-black uppercase tracking-widest ${st.text}`}>{x.faixa}</p></div>
+                                    <div className="flex-grow min-w-0">
+                                        <p className="font-black text-slate-800">{x.ficha ? x.ficha.equipamento : x.description} <span className="text-slate-400 font-bold text-sm">· {x.setor}</span></p>
+                                        {x.ficha && <p className="text-sm text-slate-600">{x.description}</p>}
+                                        {x.reason && <p className="text-sm text-slate-500">{x.reason}</p>}
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500">#{x.id}</span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${STATUS_COLORS[x.status] || 'bg-slate-100 text-slate-500'}`}>{x.status}</span>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500">há {fmtHoras(x.horasAberta)}</span>
+                                            {x.parado && <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-rose-100 text-rose-700">parado</span>}
+                                            {x.ficha && !x.ficha.temReserva && <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-rose-100 text-rose-700">sem reserva</span>}
+                                            {x.ficha && data.reincidencias.some(r => r.ficha.id === x.ficha.id) && <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-rose-100 text-rose-700">reincidente</span>}
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setExpanded(expanded === x.id ? null : x.id)} aria-expanded={expanded === x.id} className="shrink-0 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50">Por quê?</button>
+                                </div>
+                                {expanded === x.id && (
+                                    <div className="mt-3 p-3 bg-slate-50 rounded-xl text-sm font-medium text-slate-600 grid grid-cols-[1fr_auto] gap-x-6 gap-y-1">
+                                        {x.composicao.map(c => (<React.Fragment key={c.item}><span>{c.item}</span><span className="font-black text-right">+{c.pontos}</span></React.Fragment>))}
+                                        <span className="font-black border-t border-slate-200 pt-1">Total</span><span className="font-black text-right border-t border-slate-200 pt-1">{x.score}</span>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {tab === 'alertas' && (
+                <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">Reincidência de falha</h3>
+                        <p className="text-xs text-slate-400 mb-4">2 ou mais corretivas no mesmo equipamento em {data.parametros.janelaReincidenciaDias} dias.</p>
+                        {data.reincidencias.length === 0 && <p className="text-sm text-slate-400 font-medium">Nenhuma reincidência no período.</p>}
+                        {data.reincidencias.map(r => (
+                            <div key={r.ficha.id} className="border-l-4 border-rose-600 bg-rose-50/50 rounded-r-xl p-3 mb-2">
+                                <p className="font-black text-slate-800 text-sm">{r.ficha.equipamento} · Pat. {r.ficha.patrimonio || 's/n'}</p>
+                                <p className="text-xs text-slate-500">{r.ficha.setor} · {r.total} corretivas. Revisar o reparo anterior e avaliar substituição.</p>
+                                <div className="flex flex-wrap gap-1 mt-2">{r.ocorrencias.map(o => <span key={o.id} className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700">{fmtDataISO(o.data)}{o.aberta ? ' (aberta)' : ''}</span>)}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">Calibração</h3>
+                        <p className="text-xs text-slate-400 mb-4">Vencidas ou vencendo em até {data.parametros.janelaPrazoDias} dias, a partir das fichas.</p>
+                        {data.prazos.length === 0 && <p className="text-sm text-slate-400 font-medium">Nenhum vencimento próximo.</p>}
+                        {data.prazos.map(p => (
+                            <div key={p.ficha.id} className={`border-l-4 ${p.dias < 0 ? 'border-rose-600 bg-rose-50/50' : 'border-amber-500 bg-amber-50/50'} rounded-r-xl p-3 mb-2`}>
+                                <p className="font-black text-slate-800 text-sm">{p.ficha.equipamento} · Pat. {p.ficha.patrimonio || 's/n'}</p>
+                                <p className="text-xs text-slate-500">{p.ficha.setor} · {fmtDataISO(p.data)} · <strong className={p.dias < 0 ? 'text-rose-600' : 'text-amber-700'}>{p.dias < 0 ? `vencida há ${-p.dias} dia(s)` : p.dias === 0 ? 'vence hoje' : `vence em ${p.dias} dia(s)`}</strong></p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {tab === 'indicadores' && (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-1">Indicadores por equipamento · {data.parametros.periodoIndicadoresDias} dias</h3>
+                    <p className="text-xs text-slate-400 mb-4">Calculados a partir das pendências corretivas vinculadas a cada ficha.</p>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead><tr className="text-[10px] uppercase tracking-widest text-slate-400 border-b-2 border-slate-100">
+                                <th className="text-left py-2 pr-3">Equipamento</th><th className="text-right px-3">Falhas</th><th className="text-right px-3">MTBF (h)</th><th className="text-right px-3">MTTR (h)</th><th className="text-left pl-3 min-w-[160px]">Disponibilidade</th>
+                            </tr></thead>
+                            <tbody>
+                                {data.indicadores.map(r => {
+                                    const pct = r.disponibilidade * 100;
+                                    const color = pct < 98.5 ? 'bg-rose-500' : pct < 99.5 ? 'bg-amber-500' : 'bg-emerald-500';
+                                    return (
+                                        <tr key={r.ficha.id} className="border-b border-slate-100">
+                                            <td className="py-2 pr-3"><p className="font-bold text-slate-700">{r.ficha.equipamento}</p><p className="text-[10px] text-slate-400 font-bold">Pat. {r.ficha.patrimonio || 's/n'} · {r.ficha.setor}</p></td>
+                                            <td className="text-right px-3 font-mono">{r.falhas}</td>
+                                            <td className="text-right px-3 font-mono">{r.mtbfHoras != null ? r.mtbfHoras.toLocaleString('pt-BR') : '—'}</td>
+                                            <td className="text-right px-3 font-mono">{r.mttrHoras != null ? r.mttrHoras.toLocaleString('pt-BR') : '—'}</td>
+                                            <td className="pl-3"><div className="flex items-center gap-2"><div className="flex-grow h-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${color}`} style={{ width: `${pct}%` }}/></div><span className="font-mono text-xs text-slate-600 w-16 text-right">{pct.toFixed(2).replace('.', ',')}%</span></div></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-4">Disponibilidade = (período − tempo em reparo) ÷ período · MTBF = tempo operante ÷ nº de falhas · MTTR = soma dos tempos de reparo concluídos ÷ nº de reparos. O MTTR só passa a ser medido para pendências abertas após esta versão, que registra a hora de abertura e de conclusão.</p>
+                </div>
+            )}
+
+            {tab === 'plantao' && (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-4">
+                    <div className="flex flex-wrap gap-3">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Turno
+                            <select value={turno} onChange={e => setTurno(e.target.value)} className="block mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 normal-case tracking-normal"><option>Noturno (18h–6h)</option><option>Diurno (6h–18h)</option></select>
+                        </label>
+                        <label className="flex-grow min-w-[220px] text-[10px] font-black uppercase tracking-widest text-slate-400">Observação livre
+                            <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex.: aguardando peça do fornecedor do ventilador" className="block w-full mt-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 normal-case tracking-normal"/>
+                        </label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={copyHandoff} className="px-5 py-3 bg-slate-800 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-900 flex items-center gap-2"><ClipboardList size={14}/> Copiar texto</button>
+                        {copied && <span className="text-xs font-bold text-emerald-600">{copied}</span>}
+                    </div>
+                    <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-700">{handoff}</pre>
+                </div>
             )}
         </div>
     );
